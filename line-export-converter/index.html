@@ -4,101 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LINE Chat Converter</title>
-<link rel="stylesheet" href="line-chat.css">
-<style>
-/* ── Sender name picker ── */
-.lc-field-hint
-{
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 400;
-}
-
-.lc-name-picker
-{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.lc-name-btn
-{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 7px 12px;
-  font-size: 13px;
-  font-family: 'Noto Sans HK', 'Noto Sans TC', sans-serif;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: border-color .18s, background .18s, color .18s, transform .12s;
-  user-select: none;
-}
-
-.lc-name-btn:hover
-{
-  border-color: var(--line-green);
-  color: var(--text);
-  transform: translateY(-1px);
-}
-
-.lc-name-btn.selected
-{
-  background: rgba(6,199,85,0.12);
-  border-color: var(--line-green);
-  color: var(--line-green);
-  font-weight: 600;
-}
-
-.lc-name-btn .nb-avatar
-{
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
-
-.lc-name-btn.selected .nb-avatar
-{
-  box-shadow: 0 0 0 2px var(--line-green);
-}
-
-.lc-name-btn .nb-check
-{
-  font-size: 13px;
-  opacity: 0;
-  transition: opacity .15s;
-  margin-left: 2px;
-}
-
-.lc-name-btn.selected .nb-check { opacity: 1; }
-
-/* "None / skip" option */
-.lc-name-btn.none-btn
-{
-  font-style: italic;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-.lc-name-btn.none-btn.selected
-{
-  background: var(--surface2);
-  border-color: var(--text-dim);
-  color: var(--text-muted);
-}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -135,6 +41,7 @@
     <div class="lc-preview-toolbar">
       <span id="preview-label">Preview</span>
       <div style="display:flex;gap:8px">
+        <button class="lc-btn-sm" id="download-css-btn">⬇ Download CSS</button>
         <button class="lc-btn-sm" id="download-btn">⬇ Download HTML</button>
       </div>
     </div>
@@ -339,7 +246,7 @@ function parseLineTxt(raw) {
  * @param {string} myName   - current user's display name (right-side bubbles)
  * @param {string} cssPath  - relative path to external CSS
  */
-function buildHtml(parsed, myName, cssPath = 'line-chat.css') {
+function buildHtml(parsed, myName, cssPath = 'line.css') {
   const { title, saveDate, messages } = parsed;
 
   // Collect unique senders for colour assignment and member pills
@@ -467,7 +374,8 @@ const statusEl     = document.getElementById('status');
 const previewPanel = document.getElementById('preview-panel');
 const previewFrame = document.getElementById('preview-frame');
 const previewLabel = document.getElementById('preview-label');
-const downloadBtn  = document.getElementById('download-btn');
+const downloadBtn    = document.getElementById('download-btn');
+const downloadCssBtn = document.getElementById('download-css-btn');
 
 // Avatar palette colours (must match line-chat.css av-N vars)
 const AV_COLOURS = [
@@ -617,11 +525,11 @@ convertBtn.addEventListener('click', () =>
   {
     const myName = selectedName;
 
-    generatedHtml = buildHtml(parsedData, myName, 'line-chat.css');
+    generatedHtml = buildHtml(parsedData, myName, 'line.css');
     chatTitle = parsedData.title || loadedFile.name.replace('.txt', '');
 
     const inlined = generatedHtml.replace(
-      '<link rel="stylesheet" href="line-chat.css">',
+      '<link rel="stylesheet" href="line.css">',
       '<style>' + getInlineCSS() + '</style>'
     );
 
@@ -648,6 +556,14 @@ downloadBtn.addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = (chatTitle || 'line-chat') + '.html';
+  a.click();
+});
+
+downloadCssBtn.addEventListener('click', () =>
+{
+  const a = document.createElement('a');
+  a.href = 'line.css';
+  a.download = 'line.css';
   a.click();
 });
 

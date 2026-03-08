@@ -1,0 +1,318 @@
+/* ================================================
+   LINE Chat Export Viewer — line.css
+   Place this file alongside your exported .html
+   ================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root
+{
+  --bg:             #0f1117;
+  --surface:        #1a1d27;
+  --surface2:       #22263a;
+  --line-green:     #06c755;
+  --line-green-dim: #04a044;
+  --accent:         #7c83fd;
+  --accent2:        #f0c040;
+  --text:           #e8eaf0;
+  --text-muted:     #7a7f96;
+  --text-dim:       #4a4f66;
+  --bubble-me:      #1e3a2e;
+  --bubble-other:   #1e2235;
+  --bubble-system:  #161925;
+  --border:         rgba(255,255,255,0.07);
+  --shadow:         0 4px 24px rgba(0,0,0,0.4);
+
+  /* Avatar palette — cycled by member index */
+  --av-0: #e05c5c;
+  --av-1: #e07d3c;
+  --av-2: #c9a42a;
+  --av-3: #4caf7d;
+  --av-4: #2a9dc9;
+  --av-5: #7b5cf0;
+  --av-6: #c94e8e;
+  --av-7: #5c8ee0;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Body ── */
+body
+{
+  font-family: 'Noto Sans HK', 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ══════════════════════════════════════
+   HEADER
+══════════════════════════════════════ */
+.lc-header
+{
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 24px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lc-header-icon
+{
+  width: 44px;
+  height: 44px;
+  background: var(--line-green);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.lc-header-text h1
+{
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.lc-header-text p
+{
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+}
+
+.lc-member-pills
+{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lc-pill
+{
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ══════════════════════════════════════
+   CHAT CONTAINER
+══════════════════════════════════════ */
+.lc-chat
+{
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 0 60px;
+}
+
+/* ── Date Separator ── */
+.lc-date-sep
+{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 24px 12px;
+}
+
+.lc-date-sep::before,
+.lc-date-sep::after
+{
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.lc-date-label
+{
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  background: var(--bg);
+  padding: 0 4px;
+}
+
+/* ── System Message ── */
+.lc-system-row
+{
+  display: flex;
+  justify-content: center;
+  padding: 6px 24px;
+}
+
+.lc-system-msg
+{
+  background: var(--bubble-system);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ── Message Row ── */
+.lc-msg-row
+{
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 2px 24px;
+  margin: 1px 0;
+}
+
+.lc-msg-row.is-me { flex-direction: row-reverse; }
+
+.lc-msg-row.first-in-group { margin-top: 10px; }
+
+/* ── Avatar ── */
+.lc-avatar
+{
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.lc-avatar-placeholder
+{
+  width: 32px;
+  flex-shrink: 0;
+}
+
+/* Avatar colour classes */
+.av-0 { background: var(--av-0); }
+.av-1 { background: var(--av-1); }
+.av-2 { background: var(--av-2); }
+.av-3 { background: var(--av-3); }
+.av-4 { background: var(--av-4); }
+.av-5 { background: var(--av-5); }
+.av-6 { background: var(--av-6); }
+.av-7 { background: var(--av-7); }
+
+/* ── Message Group ── */
+.lc-msg-group
+{
+  display: flex;
+  flex-direction: column;
+  max-width: 65%;
+  gap: 3px;
+}
+
+.lc-sender-name
+{
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0 4px;
+  margin-bottom: 1px;
+}
+
+.lc-msg-row.is-me .lc-sender-name { text-align: right; }
+
+/* ── Bubble Wrap ── */
+.lc-bubble-wrap
+{
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.lc-msg-row.is-me .lc-bubble-wrap { flex-direction: row-reverse; }
+
+/* ── Bubble ── */
+.lc-bubble
+{
+  background: var(--bubble-other);
+  border-radius: 16px 16px 16px 4px;
+  padding: 9px 13px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+  border: 1px solid var(--border);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.lc-msg-row.is-me .lc-bubble
+{
+  background: var(--bubble-me);
+  border-radius: 16px 16px 4px 16px;
+  border-color: rgba(6,199,85,0.15);
+}
+
+.lc-bubble a
+{
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.lc-bubble a:hover { text-decoration: underline; opacity: 1; }
+
+/* ── Timestamp ── */
+.lc-timestamp
+{
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: 'DM Mono', monospace;
+  flex-shrink: 0;
+  margin-bottom: 3px;
+  white-space: nowrap;
+}
+
+/* ── Media Placeholder ── */
+.lc-media-bubble
+{
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Responsive ── */
+@media (max-width: 600px)
+{
+  .lc-msg-group { max-width: 78%; }
+  .lc-msg-row   { padding: 2px 12px; }
+  .lc-date-sep  { padding: 20px 12px 8px; }
+}
