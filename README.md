@@ -1,4 +1,4 @@
-# tools.hlcheng.cf
+# Handy Tools
 
 A growing collection of small, focused browser utilities deployed on **Cloudflare Pages**.  
 No accounts. No tracking. Everything runs client-side where possible.
