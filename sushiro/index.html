@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,458 +7,20 @@
     <link rel="icon" type="image/x-icon" href="https://asset.hlcheng.cf/dining/sushiro/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-
-    <style>
-        :root
-        {
-            --red:          #c8102e;
-            --red-glow:     rgba(200, 16, 46, 0.15);
-            --cream:        #fdf6ec;
-            --ink:          #1a0a06;
-            --ink-mid:      #4a2c22;
-            --ink-faint:    #9e7868;
-            --card-bg:      #ffffff;
-            --border:       rgba(200, 16, 46, 0.15);
-            --shadow:       0 4px 32px rgba(26, 10, 6, 0.08);
-            --shadow-hover: 0 12px 48px rgba(200, 16, 46, 0.18);
-            --open-color:   #1a8c4e;
-            --closed-color: #c8102e;
-            --radius:       14px;
-        }
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body
-        {
-            font-family: 'Zen Kaku Gothic New', sans-serif;
-            background-color: var(--cream);
-            color: var(--ink);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        body::before
-        {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* ── Header ────────────────────────────────────────── */
-        .site-header
-        {
-            position: relative;
-            padding: 48px 24px 36px;
-            text-align: center;
-            border-bottom: 1px solid var(--border);
-            background: linear-gradient(180deg, rgba(200,16,46,0.06) 0%, transparent 100%);
-            overflow: hidden;
-        }
-
-        .site-header::after
-        {
-            content: '壽司郎';
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 140px;
-            font-weight: 900;
-            color: var(--red);
-            opacity: 0.04;
-            letter-spacing: -4px;
-            white-space: nowrap;
-            pointer-events: none;
-            user-select: none;
-        }
-
-        .header-inner
-        {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 10px;
-        }
-
-        .logo
-        {
-            width: 52px;
-            height: 52px;
-            object-fit: contain;
-            animation: logoFloat 4s ease-in-out infinite;
-        }
-
-        @keyframes logoFloat
-        {
-            0%, 100% { transform: translateY(0); }
-            50%       { transform: translateY(-5px); }
-        }
-
-        h1
-        {
-            font-size: clamp(1.8rem, 4vw, 2.8rem);
-            font-weight: 900;
-            letter-spacing: -0.5px;
-            color: var(--red);
-        }
-
-        .subtitle
-        {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.78rem;
-            color: var(--ink-faint);
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            margin-top: 4px;
-        }
-
-        /* ── Progress bar ──────────────────────────────────── */
-        .progress-wrap
-        {
-            max-width: 400px;
-            margin: 20px auto 0;
-            display: none;
-        }
-
-        .progress-wrap.visible { display: block; }
-
-        .progress-label
-        {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.7rem;
-            color: var(--ink-faint);
-            margin-bottom: 6px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .progress-bar-track
-        {
-            height: 4px;
-            background: var(--border);
-            border-radius: 100px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill
-        {
-            height: 100%;
-            background: var(--red);
-            border-radius: 100px;
-            width: 0%;
-            transition: width 0.2s ease;
-        }
-
-        /* ── Filter tabs ───────────────────────────────────── */
-        .filter-bar
-        {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            padding: 24px 16px 0;
-            flex-wrap: wrap;
-        }
-
-        .tab-btn
-        {
-            font-family: 'Zen Kaku Gothic New', sans-serif;
-            font-size: 0.82rem;
-            font-weight: 700;
-            padding: 7px 18px;
-            border: 1.5px solid var(--border);
-            border-radius: 100px;
-            background: transparent;
-            color: var(--ink-mid);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            letter-spacing: 0.04em;
-        }
-
-        .tab-btn:hover, .tab-btn.active
-        {
-            background: var(--red);
-            border-color: var(--red);
-            color: #fff;
-            box-shadow: 0 4px 16px var(--red-glow);
-        }
-
-        /* ── Main ──────────────────────────────────────────── */
-        .main
-        {
-            position: relative;
-            z-index: 1;
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 32px 20px 64px;
-        }
-
-        /* ── Update bar ────────────────────────────────────── */
-        .update-bar
-        {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 12px 20px;
-            margin: 0 0 28px;
-            background: rgba(200,16,46,0.04);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.72rem;
-            color: var(--ink-faint);
-            flex-wrap: wrap;
-        }
-
-        .update-bar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-
-        .store-count-badge
-        {
-            padding: 2px 10px;
-            background: var(--red-glow);
-            color: var(--red);
-            border-radius: 100px;
-            border: 1px solid rgba(200,16,46,0.2);
-            font-size: 0.68rem;
-            font-weight: 500;
-        }
-
-        .refresh-btn
-        {
-            font-family: 'Zen Kaku Gothic New', sans-serif;
-            font-size: 0.78rem;
-            font-weight: 700;
-            padding: 6px 16px;
-            border: 1.5px solid var(--red);
-            border-radius: 100px;
-            background: transparent;
-            color: var(--red);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
-        }
-
-        .refresh-btn:hover  { background: var(--red); color: #fff; }
-        .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ── Card grid ─────────────────────────────────────── */
-        .card-grid
-        {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
-        }
-
-        /* ── Store card ────────────────────────────────────── */
-        .store-card
-        {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-            position: relative;
-            overflow: hidden;
-            animation: fadeUp 0.35s ease both;
-        }
-
-        @keyframes fadeUp
-        {
-            from { opacity: 0; transform: translateY(16px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .store-card::before
-        {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--red);
-            transform: scaleX(0);
-            transform-origin: left;
-            transition: transform 0.3s ease;
-        }
-
-        .store-card:hover
-        {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-hover);
-            border-color: rgba(200,16,46,0.3);
-        }
-
-        .store-card:hover::before { transform: scaleX(1); }
-
-        .card-header
-        {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            margin-bottom: 14px;
-            gap: 8px;
-        }
-
-        .store-name-wrap {}
-
-        .store-name
-        {
-            font-size: 1rem;
-            font-weight: 700;
-            line-height: 1.3;
-            color: var(--ink);
-        }
-
-        .store-id-label
-        {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.65rem;
-            color: var(--ink-faint);
-            margin-top: 2px;
-        }
-
-        .status-badge
-        {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.62rem;
-            font-weight: 500;
-            padding: 4px 10px;
-            border-radius: 100px;
-            white-space: nowrap;
-            flex-shrink: 0;
-            letter-spacing: 0.06em;
-        }
-
-        .status-badge.open
-        {
-            background: rgba(26,140,78,0.1);
-            color: var(--open-color);
-            border: 1px solid rgba(26,140,78,0.25);
-        }
-
-        .status-badge.closed
-        {
-            background: rgba(200,16,46,0.08);
-            color: var(--closed-color);
-            border: 1px solid rgba(200,16,46,0.2);
-        }
-
-        .card-row
-        {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 7px 0;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-            font-size: 0.82rem;
-            gap: 8px;
-        }
-
-        .card-row:last-child { border-bottom: none; }
-
-        .row-label { color: var(--ink-faint); font-size: 0.78rem; flex-shrink: 0; }
-
-        .row-value
-        {
-            font-family: 'DM Mono', monospace;
-            font-weight: 500;
-            color: var(--ink);
-            text-align: right;
-        }
-
-        .row-value.big
-        {
-            color: var(--red);
-            font-weight: 700;
-            font-size: 1.1rem;
-        }
-
-        .queue-tickets
-        {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-
-        .ticket-chip
-        {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.7rem;
-            padding: 2px 8px;
-            background: var(--red-glow);
-            color: var(--red);
-            border-radius: 4px;
-            font-weight: 500;
-        }
-
-        /* ── Skeleton ──────────────────────────────────────── */
-        .skeleton-card
-        {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-        }
-
-        .skel
-        {
-            background: linear-gradient(90deg, #f0e8e0 25%, #fdf6ec 50%, #f0e8e0 75%);
-            background-size: 200% 100%;
-            border-radius: 6px;
-            animation: shimmer 1.4s ease infinite;
-        }
-
-        @keyframes shimmer
-        {
-            0%   { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
-        .skel-title  { height: 18px; width: 60%; margin-bottom: 8px; }
-        .skel-id     { height: 11px; width: 30%; margin-bottom: 16px; }
-        .skel-row    { height: 13px; width: 100%; margin-bottom: 9px; }
-        .skel-row-sm { height: 13px; width: 70%; }
-
-        /* ── Empty state ───────────────────────────────────── */
-        .state-message
-        {
-            grid-column: 1 / -1;
-            text-align: center;
-            padding: 48px 24px;
-            color: var(--ink-faint);
-            font-size: 0.9rem;
-        }
-
-        @media (max-width: 480px)
-        {
-            .card-grid { grid-template-columns: 1fr; }
-            h1 { font-size: 1.6rem; }
-        }
-    </style>
+    <link rel="stylesheet" href="style.css" type="text/css">
 </head>
 <body>
 
 <header class="site-header">
     <div class="header-inner">
         <img src="https://asset.hlcheng.cf/dining/sushiro/logo.png" alt="Sushiro" class="logo">
-        <h1>Sushiro Queue</h1>
+        <h1>壽司郎 Queue</h1>
     </div>
-    <p class="subtitle">Live Store Status &amp; Waiting Groups — Hong Kong</p>
+    <p class="subtitle">即時分店狀態 · Live Store Status — Hong Kong</p>
 
     <div class="progress-wrap" id="progressWrap">
         <div class="progress-label">
-            <span id="progressText">Scanning stores…</span>
+            <span id="progressText">掃描分店…</span>
             <span id="progressPct">0%</span>
         </div>
         <div class="progress-bar-track">
@@ -468,15 +30,15 @@
 </header>
 
 <div class="filter-bar">
-    <button class="tab-btn active" data-filter="all">All</button>
-    <button class="tab-btn" data-filter="open">Open Only</button>
-    <button class="tab-btn" data-filter="closed">Closed Only</button>
+    <button class="tab-btn active" data-filter="all">全部 All</button>
+    <button class="tab-btn" data-filter="open">營業中 Open</button>
+    <button class="tab-btn" data-filter="closed">閉店中 Closed</button>
 </div>
 
 <main class="main">
     <div class="update-bar">
         <div class="update-bar-left">
-            <span id="lastUpdated">Loading…</span>
+            <span id="lastUpdated">載入中 Loading…</span>
             <span class="store-count-badge" id="storeCount"></span>
         </div>
         <button class="refresh-btn" id="refreshBtn" onclick="startScan()">↻ Refresh</button>
@@ -485,20 +47,44 @@
 </main>
 
 <script>
-    // ── API endpoints (from sushiro.ts) ──────────────────────────────────────
-    const STORE_ENDPOINT       = "https://sushipass.sushiro.com.hk/api/2.0/info/store?region=HK&storeid=";
-    const STORE_QUEUE_ENDPOINT = "https://sushipass.sushiro.com.hk/api/2.0/remote/groupqueues?region=HK&storeid=";
+    // ── API ───────────────────────────────────────────────────────────────────
+    // GET https://api.hlcheng.cf/dining/sushiro/getStoreStatus?storeId={id}
+    //
+    // Success response (HTTP 200):
+    // {
+    //   status:  "OK",
+    //   message: "Success",
+    //   value: {
+    //     storeId:                number,
+    //     name_en:                string,   // English store name
+    //     name_tc:                string,   // Chinese store name
+    //     region_tc:              string,   // Region (Chinese)
+    //     address_tc:             string,   // Address (Chinese)
+    //     store_status:           string,   // "營業中" | "閉店中"
+    //     store_ticketing_status: string,   // "派籌中" | "暫停派籌" (only when open)
+    //     waiting_count:          number,
+    //     queue:                  string[]
+    //   }
+    // }
+    //
+    // Error responses: 400 / 404 / 422 with status: "Error"
+    // Non-existent store IDs return an error status → we skip them.
 
-    const STORE_ID_MIN     = 1;
-    const STORE_ID_MAX     = 100;
-    const FETCH_CONCURRENCY = 10;   // parallel fetches at a time
+    const API_ENDPOINT = "https://api.hlcheng.cf/dining/sushiro/getStoreStatus?storeId=";
 
-    // ── State ────────────────────────────────────────────────────────────────
-    let stores      = [];   // array of resolved store objects
+    const STATUS_OPEN            = "營業中";
+    const TICKETING_ACTIVE_VALUE = "派籌中";
+
+    const STORE_ID_MIN      = 1;
+    const STORE_ID_MAX      = 100;
+    const FETCH_CONCURRENCY = 10;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let stores       = [];
     let activeFilter = "all";
-    let scanning    = false;
+    let scanning     = false;
 
-    // ── Init ─────────────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────────────
     document.addEventListener("DOMContentLoaded", () =>
     {
         setupFilters();
@@ -520,14 +106,14 @@
         });
     }
 
-    // ── Scan stores 1–100 with concurrency control ────────────────────────────
+    // ── Scan store IDs 1–100 ──────────────────────────────────────────────────
     async function startScan()
     {
         if (scanning) return;
         scanning = true;
 
-        const btn = document.getElementById("refreshBtn");
-        btn.disabled = true;
+        const btn     = document.getElementById("refreshBtn");
+        btn.disabled  = true;
         btn.innerHTML = '<span class="spinning">↻</span> Scanning';
 
         stores = [];
@@ -539,10 +125,9 @@
 
         let completed = 0;
 
-        // Process in chunks for concurrency control
         for (let i = 0; i < ids.length; i += FETCH_CONCURRENCY)
         {
-            const chunk = ids.slice(i, i + FETCH_CONCURRENCY);
+            const chunk   = ids.slice(i, i + FETCH_CONCURRENCY);
             const results = await Promise.allSettled(chunk.map(id => fetchStore(id)));
 
             results.forEach(result =>
@@ -550,7 +135,6 @@
                 if (result.status === "fulfilled" && result.value !== null)
                 {
                     stores.push(result.value);
-                    // Insert card in real-time as stores resolve
                     insertCard(result.value);
                 }
             });
@@ -559,62 +143,59 @@
             setProgress(completed, ids.length);
         }
 
-        // Sort by store ID after all done
+        // Re-render sorted by storeId once scan is complete
         stores.sort((a, b) => a.storeId - b.storeId);
-
-        // Final render with correct sort order
         renderCards();
 
-        const now = new Date().toLocaleTimeString("en-HK",
+        const now = new Date().toLocaleTimeString("zh-HK",
             { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        document.getElementById("lastUpdated").textContent = "Updated: " + now;
+        document.getElementById("lastUpdated").textContent = "更新時間 " + now;
+
         updateStoreCount();
         hideProgress();
 
-        btn.disabled = false;
+        btn.disabled  = false;
         btn.innerHTML = "↻ Refresh";
-        scanning = false;
+        scanning      = false;
     }
 
-    // ── Fetch a single store (info + queue) ───────────────────────────────────
+    // ── Fetch one store ───────────────────────────────────────────────────────
     async function fetchStore(storeId)
     {
         try
         {
-            const [storeRes, queueRes] = await Promise.all(
-            [
-                fetch(STORE_ENDPOINT + storeId),
-                fetch(STORE_QUEUE_ENDPOINT + storeId)
-            ]);
+            const res  = await fetch(API_ENDPOINT + storeId);
+            const json = await res.json();
 
-            // HTTP 500 = invalid / non-existent store → skip
-            if (storeRes.status === 500) return null;
+            // Any non-OK API status means store doesn't exist or upstream error → skip
+            if (json.status !== "OK" || !json.value) return null;
 
-            const storeJson = await storeRes.json();
-            const queueJson = (queueRes.status !== 500) ? await queueRes.json() : { storeQueue: [] };
+            const v = json.value;
 
             return {
-                storeId:              storeId,
-                name:                 storeJson.storeName || storeJson.storeNameEn || ("Store " + storeId),
-                storeStatus:          storeJson.storeStatus,            // "OPEN" | "CLOSED"
-                localTicketingStatus: storeJson.localTicketingStatus,   // "ON" | "OFF"
-                waitingGroup:         storeJson.waitingGroup ?? null,
-                storeQueue:           queueJson.storeQueue || []
+                storeId:         v.storeId,
+                nameTc:          v.name_tc                  || "",
+                nameEn:          v.name_en                  || "",
+                regionTc:        v.region_tc                || "",
+                addressTc:       v.address_tc               || "",
+                storeStatus:     v.store_status             || "",
+                isOpen:          v.store_status === STATUS_OPEN,
+                ticketingStatus: v.store_ticketing_status   || "",
+                isTicketing:     v.store_ticketing_status === TICKETING_ACTIVE_VALUE,
+                waitingCount:    v.waiting_count            ?? null,
+                queue:           v.queue                    || []
             };
         }
         catch (err)
         {
-            // Network error or JSON parse failure — skip store
             return null;
         }
     }
 
-    // ── Real-time card insert ─────────────────────────────────────────────────
+    // ── Insert card in real-time as each store resolves ───────────────────────
     function insertCard(store)
     {
-        const grid = document.getElementById("cardGrid");
-
-        // Remove skeletons once first real card arrives
+        const grid  = document.getElementById("cardGrid");
         const skels = grid.querySelectorAll(".skeleton-card");
         if (skels.length > 0) skels.forEach(s => s.remove());
 
@@ -624,110 +205,125 @@
         }
     }
 
-    // ── Render all cards (used after sort / filter change) ────────────────────
+    // ── Render all cards (after sort or filter change) ────────────────────────
     function renderCards()
     {
-        const grid = document.getElementById("cardGrid");
+        const grid     = document.getElementById("cardGrid");
         grid.innerHTML = "";
 
         const filtered = stores.filter(matchesFilter);
 
         if (filtered.length === 0)
         {
-            grid.innerHTML = `<div class="state-message">No stores found for this filter.</div>`;
+            grid.innerHTML = `<div class="state-message">沒有符合條件的分店。</div>`;
             return;
         }
 
-        filtered.forEach((store, i) =>
-        {
-            grid.appendChild(buildStoreCard(store, i));
-        });
-
+        filtered.forEach((store, i) => grid.appendChild(buildStoreCard(store, i)));
         updateStoreCount();
     }
 
     // ── Build one store card ──────────────────────────────────────────────────
     function buildStoreCard(store, animIdx)
     {
-        const card = document.createElement("div");
+        const card     = document.createElement("div");
         card.className = "store-card";
         card.style.animationDelay = Math.min(animIdx * 0.04, 0.6) + "s";
-        card.dataset.storeId = store.storeId;
 
-        const isOpen      = store.storeStatus === "OPEN";
-        const isTicketing = store.localTicketingStatus === "ON";
+        const badgeClass = store.isOpen ? "open" : "closed";
 
-        const badgeClass = isOpen ? "open" : "closed";
-        const badgeLabel = isOpen ? "OPEN" : "CLOSED";
-
-        let ticketsHtml;
-        if (store.storeQueue && store.storeQueue.length > 0)
+        // Ticketing row — only shown when store is open
+        let ticketingRow = "";
+        if (store.isOpen)
         {
-            ticketsHtml = `<div class="queue-tickets">` +
-                store.storeQueue.map(t => `<span class="ticket-chip">${esc(String(t))}</span>`).join("") +
-                `</div>`;
+            const ticketingIcon = store.isTicketing ? "🟢" : "🔴";
+            ticketingRow = `
+                <div class="card-row">
+                    <span class="row-label">派籌狀態</span>
+                    <span class="row-value">${ticketingIcon} ${esc(store.ticketingStatus)}</span>
+                </div>`;
         }
-        else
+
+        // Queue chips — only shown when store is open
+        let queueRow = "";
+        if (store.isOpen)
         {
-            ticketsHtml = `<span class="row-value">—</span>`;
+            let ticketsHtml;
+            if (store.queue && store.queue.length > 0)
+            {
+                ticketsHtml = `<div class="queue-tickets">` +
+                    store.queue.map(t => `<span class="ticket-chip">${esc(String(t))}</span>`).join("") +
+                    `</div>`;
+            }
+            else
+            {
+                ticketsHtml = `<span class="row-value">—</span>`;
+            }
+
+            queueRow = `
+                <div class="card-row">
+                    <span class="row-label">現在籌號</span>
+                    ${ticketsHtml}
+                </div>`;
         }
+
+        // Address strip — only shown if present
+        const addressStrip = store.addressTc
+            ? `<div class="card-address">📍 ${esc(store.addressTc)}</div>`
+            : "";
 
         card.innerHTML = `
             <div class="card-header">
-                <div class="store-name-wrap">
-                    <div class="store-name">${esc(store.name)}</div>
-                    <div class="store-id-label">ID #${store.storeId}</div>
+                <div>
+                    <div class="store-name-tc">${esc(store.nameTc || "Store " + store.storeId)}</div>
+                    <div class="store-name-en">${esc(store.nameEn)}</div>
                 </div>
-                <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+                <span class="status-badge ${badgeClass}">${esc(store.storeStatus)}</span>
             </div>
-            ${isOpen ? `
-            <div class="card-row">
-                <span class="row-label">Queue Status</span>
-                <span class="row-value">${isTicketing ? "🟢 Ticketing" : "🔴 Stopped"}</span>
-            </div>` : ""}
-            <div class="card-row">
-                <span class="row-label">Waiting Groups</span>
-                <span class="row-value big">${store.waitingGroup != null ? store.waitingGroup : "—"}</span>
+            <div class="store-meta">
+                <span class="store-id-label">ID #${store.storeId}</span>
+                ${store.regionTc ? `<span class="store-region-label">${esc(store.regionTc)}</span>` : ""}
             </div>
+            ${addressStrip}
+            ${ticketingRow}
             <div class="card-row">
-                <span class="row-label">Current Tickets</span>
-                ${ticketsHtml}
-            </div>`;
+                <span class="row-label">等候組數</span>
+                <span class="row-value big">${store.waitingCount != null ? store.waitingCount : "—"}</span>
+            </div>
+            ${queueRow}`;
 
         return card;
     }
 
-    // ── Skeleton placeholders while loading ───────────────────────────────────
+    // ── Skeleton placeholders ─────────────────────────────────────────────────
     function renderSkeletons()
     {
-        const grid = document.getElementById("cardGrid");
+        const grid     = document.getElementById("cardGrid");
         grid.innerHTML = "";
+
         for (let i = 0; i < 12; i++)
         {
             grid.innerHTML += `
                 <div class="skeleton-card">
                     <div class="skel skel-title"></div>
-                    <div class="skel skel-id"></div>
+                    <div class="skel skel-subtitle"></div>
+                    <div class="skel skel-addr"></div>
                     <div class="skel skel-row"></div>
                     <div class="skel skel-row-sm"></div>
                 </div>`;
         }
+
         document.getElementById("storeCount").textContent = "";
     }
 
     // ── Progress bar ──────────────────────────────────────────────────────────
     function setProgress(done, total)
     {
-        const wrap  = document.getElementById("progressWrap");
-        const fill  = document.getElementById("progressFill");
-        const text  = document.getElementById("progressText");
-        const pct   = document.getElementById("progressPct");
         const ratio = Math.round((done / total) * 100);
-
-        wrap.classList.add("visible");
-        fill.style.width = ratio + "%";
-        text.textContent = `Scanning stores… ${done} / ${total}`;
-        pct.textContent  = ratio + "%";
+        document.getElementById("progressWrap").classList.add("visible");
+        document.getElementById("progressFill").style.width = ratio + "%";
+        document.getElementById("progressText").textContent = `掃描分店… ${done} / ${total}`;
+        document.getElementById("progressPct").textContent  = ratio + "%";
     }
 
     function hideProgress()
@@ -738,16 +334,15 @@
     // ── Filter helpers ────────────────────────────────────────────────────────
     function matchesFilter(store)
     {
-        if (activeFilter === "open")   return store.storeStatus === "OPEN";
-        if (activeFilter === "closed") return store.storeStatus === "CLOSED";
+        if (activeFilter === "open")   return store.isOpen === true;
+        if (activeFilter === "closed") return store.isOpen === false;
         return true;
     }
 
     function updateStoreCount()
     {
         const filtered = stores.filter(matchesFilter);
-        const badge = document.getElementById("storeCount");
-        badge.textContent = filtered.length + " store" + (filtered.length !== 1 ? "s" : "");
+        document.getElementById("storeCount").textContent = filtered.length + " 間分店";
     }
 
     // ── Utility ───────────────────────────────────────────────────────────────
