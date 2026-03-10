@@ -40,6 +40,7 @@
         <div class="update-bar-left">
             <span id="lastUpdated">載入中 Loading…</span>
             <span class="store-count-badge" id="storeCount"></span>
+            <span id="storeListDate"></span>
         </div>
         <button class="refresh-btn" id="refreshBtn" onclick="startScan()">↻ Refresh</button>
     </div>
@@ -70,13 +71,12 @@
     // Error responses: 400 / 404 / 422 with status: "Error"
     // Non-existent store IDs return an error status → we skip them.
 
-    const API_ENDPOINT = "https://api.hlcheng.cf/dining/sushiro/getStoreStatus?storeId=";
+    const API_ENDPOINT    = "https://api.hlcheng.cf/dining/sushiro/getStoreStatus?storeId=";
+    const STORE_LIST_JSON = "stores.json";
 
     const STATUS_OPEN            = "營業中";
     const TICKETING_ACTIVE_VALUE = "派籌中";
 
-    const STORE_ID_MIN      = 1;
-    const STORE_ID_MAX      = 100;
     const FETCH_CONCURRENCY = 10;
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@
         });
     }
 
-    // ── Scan store IDs 1–100 ──────────────────────────────────────────────────
+    // ── Load store ID list then scan ──────────────────────────────────────────
     async function startScan()
     {
         if (scanning) return;
@@ -118,11 +118,43 @@
 
         stores = [];
         renderSkeletons();
-        setProgress(0, STORE_ID_MAX - STORE_ID_MIN + 1);
 
-        const ids = [];
-        for (let i = STORE_ID_MIN; i <= STORE_ID_MAX; i++) ids.push(i);
+        // Step 1: fetch the store ID list JSON
+        let ids = [];
+        try
+        {
+            const res      = await fetch(STORE_LIST_JSON);
+            const json     = await res.json();
+            ids            = json.storeid_list || [];
 
+            const listDate = json.updated || "";
+            if (listDate)
+            {
+                document.getElementById("storeListDate").textContent = "店舖列表: " + listDate;
+            }
+        }
+        catch (err)
+        {
+            document.getElementById("regionsContainer").innerHTML =
+                `<div class="state-message">⚠ 無法載入店舖列表 (sushiro-stores.json)</div>`;
+            btn.disabled  = false;
+            btn.innerHTML = "↻ Refresh";
+            scanning      = false;
+            return;
+        }
+
+        if (ids.length === 0)
+        {
+            document.getElementById("regionsContainer").innerHTML =
+                `<div class="state-message">店舖列表為空。</div>`;
+            btn.disabled  = false;
+            btn.innerHTML = "↻ Refresh";
+            scanning      = false;
+            return;
+        }
+
+        // Step 2: fetch each store in the list
+        setProgress(0, ids.length);
         let completed = 0;
 
         for (let i = 0; i < ids.length; i += FETCH_CONCURRENCY)
