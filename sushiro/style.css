@@ -240,6 +240,54 @@ h1
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Region sections ── */
+.regions-container {}
+
+.region-section
+{
+    margin-bottom: 48px;
+    animation: fadeUp 0.4s ease both;
+}
+
+.region-heading
+{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+}
+
+.region-heading h2
+{
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+}
+
+.region-heading::after
+{
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), transparent);
+}
+
+.region-store-count
+{
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 3px 9px;
+    background: var(--red-glow);
+    color: var(--red);
+    border: 1px solid rgba(200,16,46,0.2);
+    border-radius: 100px;
+    flex-shrink: 0;
+}
+
 /* ── Card grid ── */
 .card-grid
 {
@@ -331,15 +379,6 @@ h1
     color: var(--ink-faint);
 }
 
-.store-region-label
-{
-    font-family: 'DM Mono', monospace;
-    font-size: 0.63rem;
-    color: var(--ink-faint);
-    padding: 1px 7px;
-    border: 1px solid var(--border);
-    border-radius: 100px;
-}
 
 .status-badge
 {

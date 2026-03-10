@@ -43,7 +43,7 @@
         </div>
         <button class="refresh-btn" id="refreshBtn" onclick="startScan()">↻ Refresh</button>
     </div>
-    <div class="card-grid" id="cardGrid"></div>
+    <div id="regionsContainer"></div>
 </main>
 
 <script>
@@ -58,7 +58,7 @@
     //     storeId:                number,
     //     name_en:                string,   // English store name
     //     name_tc:                string,   // Chinese store name
-    //     region_tc:              string,   // Region (Chinese)
+    //     region_tc:              string,   // Region (Chinese) — used for grouping
     //     address_tc:             string,   // Address (Chinese)
     //     store_status:           string,   // "營業中" | "閉店中"
     //     store_ticketing_status: string,   // "派籌中" | "暫停派籌" (only when open)
@@ -80,7 +80,7 @@
     const FETCH_CONCURRENCY = 10;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    let stores       = [];
+    let stores       = [];   // all resolved stores, sorted by storeId
     let activeFilter = "all";
     let scanning     = false;
 
@@ -101,7 +101,7 @@
                 document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 activeFilter = btn.dataset.filter;
-                renderCards();
+                renderRegions();
             });
         });
     }
@@ -135,7 +135,6 @@
                 if (result.status === "fulfilled" && result.value !== null)
                 {
                     stores.push(result.value);
-                    insertCard(result.value);
                 }
             });
 
@@ -143,9 +142,9 @@
             setProgress(completed, ids.length);
         }
 
-        // Re-render sorted by storeId once scan is complete
+        // Sort by storeId then do a full grouped render
         stores.sort((a, b) => a.storeId - b.storeId);
-        renderCards();
+        renderRegions();
 
         const now = new Date().toLocaleTimeString("zh-HK",
             { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -176,7 +175,7 @@
                 storeId:         v.storeId,
                 nameTc:          v.name_tc                  || "",
                 nameEn:          v.name_en                  || "",
-                regionTc:        v.region_tc                || "",
+                regionTc:        v.region_tc                || "其他",
                 addressTc:       v.address_tc               || "",
                 storeStatus:     v.store_status             || "",
                 isOpen:          v.store_status === STATUS_OPEN,
@@ -192,34 +191,68 @@
         }
     }
 
-    // ── Insert card in real-time as each store resolves ───────────────────────
-    function insertCard(store)
+    // ── Group stores by regionTc ──────────────────────────────────────────────
+    // Returns a Map of { regionName → store[] } preserving insertion order
+    function groupByRegion(storeList)
     {
-        const grid  = document.getElementById("cardGrid");
-        const skels = grid.querySelectorAll(".skeleton-card");
-        if (skels.length > 0) skels.forEach(s => s.remove());
+        const map = new Map();
 
-        if (matchesFilter(store))
+        storeList.forEach(store =>
         {
-            grid.appendChild(buildStoreCard(store, grid.children.length));
-        }
+            const region = store.regionTc || "其他";
+            if (!map.has(region)) map.set(region, []);
+            map.get(region).push(store);
+        });
+
+        return map;
     }
 
-    // ── Render all cards (after sort or filter change) ────────────────────────
-    function renderCards()
+    // ── Render all region sections ────────────────────────────────────────────
+    function renderRegions()
     {
-        const grid     = document.getElementById("cardGrid");
-        grid.innerHTML = "";
+        const container     = document.getElementById("regionsContainer");
+        container.innerHTML = "";
 
         const filtered = stores.filter(matchesFilter);
 
         if (filtered.length === 0)
         {
-            grid.innerHTML = `<div class="state-message">沒有符合條件的分店。</div>`;
+            container.innerHTML = `<div class="state-message">沒有符合條件的分店。</div>`;
+            updateStoreCount();
             return;
         }
 
-        filtered.forEach((store, i) => grid.appendChild(buildStoreCard(store, i)));
+        const grouped = groupByRegion(filtered);
+        let sectionIdx = 0;
+
+        grouped.forEach((regionStores, regionName) =>
+        {
+            const section = document.createElement("section");
+            section.className = "region-section";
+            section.style.animationDelay = (sectionIdx * 0.06) + "s";
+
+            // Region heading
+            const heading = document.createElement("div");
+            heading.className = "region-heading";
+            heading.innerHTML = `
+                <h2>${esc(regionName)}</h2>
+                <span class="region-store-count">${regionStores.length} 間</span>`;
+            section.appendChild(heading);
+
+            // Card grid for this region
+            const grid     = document.createElement("div");
+            grid.className = "card-grid";
+
+            regionStores.forEach((store, cardIdx) =>
+            {
+                grid.appendChild(buildStoreCard(store, cardIdx));
+            });
+
+            section.appendChild(grid);
+            container.appendChild(section);
+            sectionIdx++;
+        });
+
         updateStoreCount();
     }
 
@@ -228,7 +261,7 @@
     {
         const card     = document.createElement("div");
         card.className = "store-card";
-        card.style.animationDelay = Math.min(animIdx * 0.04, 0.6) + "s";
+        card.style.animationDelay = Math.min(animIdx * 0.04, 0.5) + "s";
 
         const badgeClass = store.isOpen ? "open" : "closed";
 
@@ -282,7 +315,6 @@
             </div>
             <div class="store-meta">
                 <span class="store-id-label">ID #${store.storeId}</span>
-                ${store.regionTc ? `<span class="store-region-label">${esc(store.regionTc)}</span>` : ""}
             </div>
             ${addressStrip}
             ${ticketingRow}
@@ -298,19 +330,37 @@
     // ── Skeleton placeholders ─────────────────────────────────────────────────
     function renderSkeletons()
     {
-        const grid     = document.getElementById("cardGrid");
-        grid.innerHTML = "";
+        const container     = document.getElementById("regionsContainer");
+        container.innerHTML = "";
 
-        for (let i = 0; i < 12; i++)
+        // Show three skeleton region sections
+        for (let s = 0; s < 3; s++)
         {
-            grid.innerHTML += `
-                <div class="skeleton-card">
-                    <div class="skel skel-title"></div>
-                    <div class="skel skel-subtitle"></div>
-                    <div class="skel skel-addr"></div>
-                    <div class="skel skel-row"></div>
-                    <div class="skel skel-row-sm"></div>
+            const section = document.createElement("section");
+            section.className = "region-section";
+
+            section.innerHTML = `
+                <div class="region-heading">
+                    <div class="skel" style="height:20px;width:120px;border-radius:6px;"></div>
                 </div>`;
+
+            const grid     = document.createElement("div");
+            grid.className = "card-grid";
+
+            for (let i = 0; i < 4; i++)
+            {
+                grid.innerHTML += `
+                    <div class="skeleton-card">
+                        <div class="skel skel-title"></div>
+                        <div class="skel skel-subtitle"></div>
+                        <div class="skel skel-addr"></div>
+                        <div class="skel skel-row"></div>
+                        <div class="skel skel-row-sm"></div>
+                    </div>`;
+            }
+
+            section.appendChild(grid);
+            container.appendChild(section);
         }
 
         document.getElementById("storeCount").textContent = "";
