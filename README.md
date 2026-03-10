@@ -16,7 +16,7 @@ Converts a LINE group chat `.txt` export into a polished, readable HTML file —
 
 **How to use:**
 1. Open LINE on your phone → Settings → Chats → Export chat history → Save as `.txt`
-2. Go to [tools.hlcheng.cf/line-converter](https://tools.hlcheng.cf/line-converter)
+2. Go to [tools.hlcheng.cf/line-export-converter](https://tools.hlcheng.cf/line-export-converter)
 3. Drop the `.txt` file, enter your display name, click **Convert**
 4. Preview the result, then download the `.html` file
 
