@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp Chat Converter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wa-converter">
+
+  <!-- ── Converter Card ── -->
+  <div class="wa-converter-card">
+    <h2><span class="icon">💬</span> WhatsApp Chat Converter</h2>
+    <p>Upload a <code>.txt</code> file exported from WhatsApp. The chat renders as a styled HTML page — photos display automatically when the image files are kept in the <strong>same folder</strong> as the downloaded HTML.</p>
+
+    <!-- Drop zone: TXT -->
+    <label class="wa-dropzone" id="dropzone">
+      <span class="dz-icon">📂</span>
+      <span class="dz-label" id="dz-label">Drop your .txt chat export here</span>
+      <span class="dz-sub">or click to browse · processed entirely in your browser</span>
+      <input type="file" id="file-input" accept=".txt">
+    </label>
+
+    <!-- "My name" picker — populated after file is loaded -->
+    <div class="wa-field" id="name-field" style="display:none">
+      <label>Which one is you? <span class="wa-field-hint">(your messages will appear on the right)</span></label>
+      <div class="wa-name-picker" id="name-picker"></div>
+    </div>
+
+    <button class="wa-btn" id="convert-btn" disabled>
+      ✨ Convert to HTML
+    </button>
+
+    <div class="wa-status" id="status"></div>
+  </div>
+
+  <!-- ── Preview Panel ── -->
+  <div class="wa-preview-panel" id="preview-panel">
+    <div class="wa-preview-toolbar">
+      <span id="preview-label">Preview</span>
+      <div style="display:flex;gap:8px">
+        <button class="wa-btn-sm" id="download-css-btn">⬇ Download CSS</button>
+        <button class="wa-btn-sm" id="download-btn">⬇ Download HTML</button>
+      </div>
+    </div>
+    <iframe class="wa-preview-frame" id="preview-frame" sandbox="allow-same-origin"></iframe>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   WhatsApp Chat Export Parser & HTML Generator
+   ============================================================
+
+   WhatsApp export format:
+   ───────────────────────
+   Each line:
+     D/M/YYYY, HH:MM:SS: Sender: Message body
+     D/M/YYYY HH:MM:SS: Sender: Message body    (no comma)
+
+   Attachment lines:
+     filename.jpg <‎附件>
+     filename.jpg <attached>
+     <Media omitted>
+
+   System messages have no "Sender: " colon segment,
+   or their sender field contains known system phrases.
+   ============================================================ */
+
+// ── Utility ────────────────────────────────────────────────
+
+function esc(str)
+{
+  return String(str)
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;');
+}
+
+function linkify(text)
+{
+  const urlRe = /https?:\/\/[^\s<>"]+/g;
+  return esc(text).replace(urlRe, url =>
+    `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
+  );
+}
+
+/** Stable colour index per sender */
+function makeColourMap(senders)
+{
+  const map = {};
+  let i = 0;
+  for (const s of senders) { if (!(s in map)) map[s] = i++ % 8; }
+  return map;
+}
+
+/** Avatar initials */
+function initials(name)
+{
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0];
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+// ── Attachment detection ────────────────────────────────────
+
+// WhatsApp attachment lines look like:
+//   2013-11-05-PHOTO-00000015.jpg <\u200e附件>   (Chinese, U+200E LTR mark inside <>)
+//   filename.jpg <attached>
+//   <Media omitted>
+// The regex strips any invisible Unicode marks and angle-bracket tag at the end.
+const ATTACH_RE = /^([\s\S]+?\.(jpe?g|png|gif|webp|mp4|mov|avi|mp3|opus|aac|ogg|pdf|docx?|xlsx?))\s*<[\u200e\u200f\u202a-\u202e\u2066-\u2069]*[^>]*>$/i;
+
+function classifyAttachment(body)
+{
+  // Strip invisible Unicode directional / BOM characters that WhatsApp inserts
+  const trimmed = body.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').trim();
+
+  if (trimmed === '<Media omitted>' || trimmed === 'Media omitted')
+    return { kind: 'media', icon: '📎', label: 'Media omitted' };
+
+  const m = trimmed.match(ATTACH_RE);
+  if (!m) return null;
+
+  // fname is the raw filename exactly as it appears — used as relative src
+  const fname = m[1].trim();
+  const ext   = m[2].toLowerCase();
+
+  if (/^(jpe?g|png|gif|webp)$/.test(ext))
+    return { kind: 'image', icon: '🖼', label: fname, filename: fname };
+  if (/^(mp4|mov|avi)$/.test(ext))
+    return { kind: 'video', icon: '🎬', label: fname };
+  if (/^(mp3|opus|aac|ogg)$/.test(ext))
+    return { kind: 'audio', icon: '🎵', label: fname };
+  if (/^pdf$/.test(ext))
+    return { kind: 'pdf',   icon: '📄', label: fname };
+  if (/^docx?$/.test(ext))
+    return { kind: 'doc',   icon: '📝', label: fname };
+  if (/^xlsx?$/.test(ext))
+    return { kind: 'sheet', icon: '📊', label: fname };
+
+  return { kind: 'file', icon: '📎', label: fname };
+}
+
+// ── Parser ─────────────────────────────────────────────────
+
+/**
+ * Parse WhatsApp .txt export.
+ * Returns: Array of message objects, one of:
+ *   { type:'date',   dateStr }
+ *   { type:'system', dateStr, timeStr, text }
+ *   { type:'msg',    dateStr, timeStr, sender, body }
+ */
+function parseWaTxt(raw)
+{
+  const lines    = raw.split(/\r?\n/);
+  const messages = [];
+
+  // Matches: D/M/YYYY, HH:MM:SS  or  D/M/YYYY HH:MM:SS  (with or without comma/AM/PM)
+  const headerRe = /^(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{2,4})[,\s]+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AaPp][Mm])?)\s*[-:]\s+(.+)/;
+
+  let pending = null;
+
+  function flushPending()
+  {
+    if (pending) { messages.push(pending); pending = null; }
+  }
+
+  for (const raw_line of lines)
+  {
+    const line = raw_line.trim();
+    if (!line) continue;
+
+    const m = line.match(headerRe);
+    if (m)
+    {
+      flushPending();
+
+      const dateStr  = m[1];
+      const timeStr  = m[2];
+      const rest     = m[3];
+
+      // Try to split "Sender: body"
+      const colonIdx = rest.indexOf(': ');
+      let sender, body;
+
+      if (colonIdx !== -1)
+      {
+        sender = rest.slice(0, colonIdx).trim();
+        body   = rest.slice(colonIdx + 2);
+      }
+      else
+      {
+        // No sender colon → system message
+        sender = null;
+        body   = rest;
+      }
+
+      // Detect known system-message senders (encryption notice etc.)
+      const isSystem = sender === null || /^‎/.test(body);
+
+      if (isSystem)
+      {
+        pending = { type: 'system', dateStr, timeStr, text: body || rest };
+      }
+      else
+      {
+        pending = { type: 'msg', dateStr, timeStr, sender, body };
+      }
+      continue;
+    }
+
+    // Continuation line
+    if (pending && line)
+    {
+      if (pending.type === 'msg')   pending.body += '\n' + line;
+      else                          pending.text += '\n' + line;
+    }
+  }
+
+  flushPending();
+
+  // Inject date-separator nodes
+  const result  = [];
+  let   lastDate = null;
+
+  for (const msg of messages)
+  {
+    if (msg.dateStr !== lastDate)
+    {
+      result.push({ type: 'date', dateStr: msg.dateStr });
+      lastDate = msg.dateStr;
+    }
+    result.push(msg);
+  }
+
+  return result;
+}
+
+// ── Date formatting ─────────────────────────────────────────
+
+function parseDateStr(ds)
+{
+  const parts = ds.split(/[\/\.\-]/);
+  if (parts.length !== 3) return new Date(ds);
+  let [a, b, c] = parts.map(Number);
+  if (c < 100) c += 2000;
+  if (a > 12)  return new Date(c, b - 1, a);   // day-first
+  if (b > 12)  return new Date(c, a - 1, b);   // month-first (US)
+  return new Date(c, b - 1, a);                 // default: day/month/year
+}
+
+function formatDateLabel(ds)
+{
+  const d = parseDateStr(ds);
+  if (isNaN(d)) return ds;
+  return d.toLocaleDateString('en-US',
+  {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+// ── HTML Generator ─────────────────────────────────────────
+
+/**
+ * Build a complete standalone HTML document from parsed messages.
+ * Images are referenced by relative filename — place image files in the
+ * same directory as the downloaded HTML and they will display automatically.
+ * @param {Array}  messages  – result of parseWaTxt()
+ * @param {string} myName    – sender name shown on the right
+ * @param {string} cssPath   – path to companion CSS file
+ */
+function buildHtml(messages, myName, cssPath)
+{
+  // Collect unique senders
+  const senderSet = new Set();
+  for (const m of messages)
+    if (m.type === 'msg') senderSet.add(m.sender);
+
+  const colourMap = makeColourMap([...senderSet]);
+
+  // Member pills
+  const pillsHtml = [...senderSet]
+    .map(s => `<span class="wc-pill">${esc(s)}</span>`)
+    .join('\n      ');
+
+  // Chat name heuristic: the sender that isn't "me", or generic
+  let chatName = 'WhatsApp Chat';
+  const others = [...senderSet].filter(s => s !== myName);
+  if (senderSet.size === 2 && others.length === 1) chatName = others[0];
+  else if (senderSet.size > 2)                     chatName = `Group (${senderSet.size})`;
+
+  // Messages HTML
+  let bodyHtml  = '';
+  let lastSender = null;
+
+  for (const m of messages)
+  {
+    // ── Date divider ──
+    if (m.type === 'date')
+    {
+      lastSender = null;
+      bodyHtml += `
+  <div class="wc-date-sep"><span class="wc-date-label">${esc(formatDateLabel(m.dateStr))}</span></div>`;
+      continue;
+    }
+
+    // ── System message ──
+    if (m.type === 'system')
+    {
+      lastSender = null;
+      bodyHtml += `
+  <div class="wc-system-row"><div class="wc-system-msg">${esc(m.text)}</div></div>`;
+      continue;
+    }
+
+    // ── Regular message ──
+    const isMe         = myName && m.sender === myName;
+    const isFirstInGrp = m.sender !== lastSender;
+    const avIdx        = colourMap[m.sender] ?? 0;
+    const avInit       = initials(m.sender);
+
+    const rowClasses = [
+      'wc-msg-row',
+      isMe         ? 'is-me'          : '',
+      isFirstInGrp ? 'first-in-group' : ''
+    ].filter(Boolean).join(' ');
+
+    // Avatar
+    const avatarHtml = (!isMe && isFirstInGrp)
+      ? `<div class="wc-avatar av-${avIdx}">${esc(avInit)}</div>`
+      : (!isMe ? `<div class="wc-avatar-placeholder"></div>` : '');
+
+    // Sender name label (only for incoming, first in group)
+    const senderHtml = (isFirstInGrp && !isMe)
+      ? `<div class="wc-sender-name av-text-${avIdx}">${esc(m.sender)}</div>`
+      : '';
+
+    // Bubble content
+    const attach = classifyAttachment(m.body);
+    let bubbleContent;
+
+    if (attach && attach.kind === 'image')
+    {
+      // Use relative path — image file must be in the same folder as the HTML
+      bubbleContent = `<div class="wc-img-bubble"><img src="${esc(attach.filename)}" alt="${esc(attach.label)}" loading="lazy" onerror="this.closest('.wc-img-bubble').classList.add('img-missing');this.style.display='none'"></div>`
+                    + `<div class="wc-img-missing-label" style="display:none">\uD83D\uDDBC\uFE0F ${esc(attach.label)}</div>`;
+    }
+    else if (attach)
+    {
+      // Generic attachment pill
+      bubbleContent = `<div class="wc-attach-bubble">${attach.icon} <span>${esc(attach.label)}</span></div>`;
+    }
+    else
+    {
+      bubbleContent = `<div class="wc-bubble">${linkify(m.body)}</div>`;
+    }
+
+    // Timestamp + tick
+    const tickHtml = isMe
+      ? `<svg class="wc-tick" width="16" height="11" viewBox="0 0 16 11" fill="none">
+           <path d="M1 6l4 4L15 1" stroke="#53BDEB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+           <path d="M5 6l4 4"       stroke="#53BDEB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+         </svg>`
+      : '';
+
+    const timeRow = `<div class="wc-meta">${esc(m.timeStr)}${tickHtml}</div>`;
+
+    bodyHtml += `
+  <div class="${rowClasses}">
+    ${avatarHtml}
+    <div class="wc-msg-group">
+      ${senderHtml}
+      <div class="wc-bubble-wrap">
+        ${bubbleContent}
+        ${timeRow}
+      </div>
+    </div>
+  </div>`;
+
+    lastSender = m.sender;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(chatName)} — WhatsApp Chat</title>
+<link rel="stylesheet" href="${esc(cssPath)}">
+</head>
+<body>
+
+<div class="wc-header">
+  <div class="wc-header-icon">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+      <path fill="#25D366" d="M24 4C13 4 4 13 4 24c0 3.6 1 7 2.7 9.9L4 44l10.4-2.7C17.2 43 20.5 44 24 44c11 0 20-9 20-20S35 4 24 4z"/>
+      <path fill="white" d="M35.5 29.4c-.5-.3-3-1.5-3.5-1.6-.5-.2-.8-.2-1.1.2-.3.5-1.2 1.6-1.5 2-.3.3-.6.4-1 .1-3-1.5-5-2.7-7-6-.3-.4 0-.6.2-1 .2-.3.5-.7.7-1 .2-.4.2-.7.1-1-.1-.3-1.1-2.6-1.5-3.6-.4-.9-.8-.8-1.1-.8h-.9c-.3 0-.8.1-1.3.6C16 17.8 14.5 19.3 14.5 22s2 5.4 2.3 5.8c.3.4 4 6.3 9.8 8.8 1.4.6 2.5 1 3.3 1.2 1.4.4 2.6.4 3.6.2 1.1-.2 3.4-1.4 3.9-2.7.5-1.3.5-2.4.3-2.6-.1-.3-.4-.4-.2-.3z"/>
+    </svg>
+  </div>
+  <div class="wc-header-text">
+    <h1>${esc(chatName)}</h1>
+    <p>WhatsApp Chat Export</p>
+    <div class="wc-member-pills">
+      ${pillsHtml}
+    </div>
+  </div>
+</div>
+
+<div class="wc-chat">
+${bodyHtml}
+</div>
+
+</body>
+</html>`;
+}
+
+// ── Inline CSS (for self-contained preview) ────────────────
+
+function getWaChatCss()
+{
+  return `
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap');
+:root{
+  --wa-green:#25D366;--wa-teal:#128C7E;--wa-dark:#075E54;--wa-blue:#53BDEB;
+  --bg:#ECE5DD;--bubble-me:#DCF8C6;--bubble-other:#FFFFFF;
+  --timestamp:#667781;--system-bg:rgba(255,255,255,0.82);
+  --av-0:#e05c5c;--av-1:#e07d3c;--av-2:#c9a42a;--av-3:#4caf7d;
+  --av-4:#2a9dc9;--av-5:#7b5cf0;--av-6:#c94e8e;--av-7:#5c8ee0;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Nunito','Noto Sans HK',sans-serif;
+  background:var(--bg);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpath fill='none' stroke='%23c8b8a2' stroke-width='0.4' opacity='0.45' d='M10 10h8v8h-8zM28 10h8v8h-8zM46 10h8v8h-8zM64 10h8v8h-8zM19 19h8v8h-8zM37 19h8v8h-8zM55 19h8v8h-8zM10 28h8v8h-8zM28 28h8v8h-8zM46 28h8v8h-8zM64 28h8v8h-8zM19 37h8v8h-8zM37 37h8v8h-8zM55 37h8v8h-8zM10 46h8v8h-8zM28 46h8v8h-8zM46 46h8v8h-8zM64 46h8v8h-8zM19 55h8v8h-8zM37 55h8v8h-8zM55 55h8v8h-8zM10 64h8v8h-8zM28 64h8v8h-8zM46 64h8v8h-8zM64 64h8v8h-8z'/%3E%3C/svg%3E");
+  min-height:100vh;
+}
+
+/* ── Header ── */
+.wc-header{
+  background:var(--wa-dark);
+  color:#fff;
+  padding:24px 28px 20px;
+  display:flex;align-items:center;gap:16px;
+}
+.wc-header-icon{
+  width:52px;height:52px;background:var(--wa-green);
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.wc-header h1{font-size:1.25rem;font-weight:700;margin-bottom:2px;}
+.wc-header p{font-size:0.8rem;color:rgba(255,255,255,0.65);margin-bottom:8px;}
+
+/* ── Member pills ── */
+.wc-member-pills{display:flex;flex-wrap:wrap;gap:6px;}
+.wc-pill{
+  background:rgba(255,255,255,0.15);color:#fff;
+  font-size:0.72rem;font-weight:600;
+  padding:3px 10px;border-radius:12px;
+}
+
+/* ── Chat area ── */
+.wc-chat{max-width:860px;margin:0 auto;padding:16px 20px 40px;}
+
+/* ── Date separator ── */
+.wc-date-sep{display:flex;justify-content:center;margin:20px 0 8px;}
+.wc-date-label{
+  background:var(--system-bg);color:var(--timestamp);
+  font-size:0.72rem;font-weight:600;
+  padding:4px 14px;border-radius:10px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* ── System message ── */
+.wc-system-row{display:flex;justify-content:center;margin:4px 0;}
+.wc-system-msg{
+  background:var(--system-bg);color:var(--timestamp);
+  font-size:0.72rem;padding:5px 14px;border-radius:10px;
+  max-width:75%;text-align:center;
+  box-shadow:0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* ── Message row ── */
+.wc-msg-row{
+  display:flex;align-items:flex-end;gap:6px;
+  margin-bottom:2px;
+}
+.wc-msg-row.is-me{flex-direction:row-reverse;}
+.wc-msg-row.first-in-group{margin-top:8px;}
+
+/* ── Avatar ── */
+.wc-avatar{
+  width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.78rem;font-weight:700;color:#fff;
+  flex-shrink:0;align-self:flex-end;
+}
+.wc-avatar-placeholder{width:34px;flex-shrink:0;}
+.wc-msg-row.is-me .wc-avatar{display:none;}
+
+.av-0{background:var(--av-0);} .av-1{background:var(--av-1);}
+.av-2{background:var(--av-2);} .av-3{background:var(--av-3);}
+.av-4{background:var(--av-4);} .av-5{background:var(--av-5);}
+.av-6{background:var(--av-6);} .av-7{background:var(--av-7);}
+
+/* ── Sender name ── */
+.wc-sender-name{
+  font-size:0.72rem;font-weight:700;margin-bottom:2px;padding-left:2px;
+}
+.av-text-0{color:var(--av-0);} .av-text-1{color:var(--av-1);}
+.av-text-2{color:var(--av-2);} .av-text-3{color:var(--av-3);}
+.av-text-4{color:var(--av-4);} .av-text-5{color:var(--av-5);}
+.av-text-6{color:var(--av-6);} .av-text-7{color:var(--av-7);}
+
+/* ── Bubble group ── */
+.wc-msg-group{display:flex;flex-direction:column;max-width:72%;}
+.wc-msg-row.is-me .wc-msg-group{align-items:flex-end;}
+
+.wc-bubble-wrap{display:flex;flex-direction:column;}
+
+/* ── Bubble ── */
+.wc-bubble{
+  position:relative;
+  background:var(--bubble-other);
+  color:#111;
+  border-radius:8px;
+  border-top-left-radius:0;
+  padding:7px 12px 6px;
+  font-size:0.9rem;line-height:1.5;
+  word-break:break-word;
+  box-shadow:0 1px 2px rgba(0,0,0,0.12);
+  white-space:pre-wrap;
+}
+.wc-bubble a{color:var(--wa-teal);text-decoration:underline;}
+
+.wc-msg-row.is-me .wc-bubble{
+  background:var(--bubble-me);
+  border-top-left-radius:8px;
+  border-top-right-radius:0;
+}
+
+/* Tails */
+.wc-bubble::before{
+  content:'';position:absolute;top:0;left:-8px;
+  border-width:0 8px 8px 0;border-style:solid;
+  border-color:transparent var(--bubble-other) transparent transparent;
+}
+.wc-msg-row.is-me .wc-bubble::before{
+  left:auto;right:-8px;
+  border-width:0 0 8px 8px;
+  border-color:transparent transparent transparent var(--bubble-me);
+}
+
+/* ── Attachment pill ── */
+.wc-attach-bubble{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bubble-other);
+  border-radius:8px;border-top-left-radius:0;
+  padding:8px 14px;
+  font-size:0.84rem;color:var(--timestamp);
+  font-style:italic;
+  box-shadow:0 1px 2px rgba(0,0,0,0.12);
+}
+.wc-msg-row.is-me .wc-attach-bubble{
+  background:var(--bubble-me);
+  border-top-left-radius:8px;border-top-right-radius:0;
+}
+
+/* ── Image bubble ── */
+.wc-img-bubble{
+  background:var(--bubble-other);
+  border-radius:8px;border-top-left-radius:0;
+  overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,0.12);
+  max-width:280px;min-width:120px;
+}
+.wc-img-bubble img{
+  display:block;width:100%;height:auto;
+  max-height:320px;object-fit:cover;
+}
+.wc-img-bubble.img-missing{
+  padding:10px 14px;
+  display:flex;align-items:center;gap:8px;
+  font-size:0.84rem;color:var(--timestamp);
+  font-style:italic;min-width:unset;
+}
+.wc-img-missing-label{display:none;}
+.wc-msg-row.is-me .wc-img-bubble{
+  border-top-left-radius:8px;border-top-right-radius:0;
+}
+
+/* ── Meta (time + tick) ── */
+.wc-meta{
+  display:flex;align-items:center;gap:4px;
+  font-size:0.68rem;color:var(--timestamp);
+  margin-top:2px;
+  justify-content:flex-end;
+}
+.wc-tick{flex-shrink:0;}
+
+/* ── Responsive ── */
+@media(max-width:600px){
+  .wc-msg-group{max-width:85%;}
+  .wc-header{padding:16px;}
+  .wc-chat{padding:12px 10px 32px;}
+}
+`.trim();
+}
+
+// ── UI Wiring ──────────────────────────────────────────────
+
+const dropzone      = document.getElementById('dropzone');
+const fileInput     = document.getElementById('file-input');
+const dzLabel       = document.getElementById('dz-label');
+const nameField     = document.getElementById('name-field');
+const namePicker    = document.getElementById('name-picker');
+const convertBtn    = document.getElementById('convert-btn');
+const statusEl      = document.getElementById('status');
+const previewPanel  = document.getElementById('preview-panel');
+const previewFrame  = document.getElementById('preview-frame');
+const previewLabel  = document.getElementById('preview-label');
+const downloadBtn    = document.getElementById('download-btn');
+const downloadCssBtn = document.getElementById('download-css-btn');
+
+const AV_COLOURS = [
+  '#e05c5c','#e07d3c','#c9a42a','#4caf7d',
+  '#2a9dc9','#7b5cf0','#c94e8e','#5c8ee0'
+];
+
+let parsedMessages  = [];   // result of parseWaTxt()
+let selectedName    = '';   // current user's name
+let generatedHtml   = '';   // last built HTML string (references external CSS)
+let chatTitle       = '';
+
+function setStatus(msg, cls)
+{
+  statusEl.textContent = msg;
+  statusEl.className   = 'wa-status ' + (cls || '');
+}
+
+function extractSenders(messages)
+{
+  const seen = [];
+  const set  = new Set();
+  for (const m of messages)
+  {
+    if (m.type === 'msg' && !set.has(m.sender))
+    {
+      set.add(m.sender);
+      seen.push(m.sender);
+    }
+  }
+  return seen;
+}
+
+function avatarInitials(name)
+{
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0];
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+function buildNamePicker(senders)
+{
+  namePicker.innerHTML = '';
+  selectedName = '';
+
+  senders.forEach((name, idx) =>
+  {
+    const colour = AV_COLOURS[idx % AV_COLOURS.length];
+    const btn    = document.createElement('button');
+    btn.type         = 'button';
+    btn.className    = 'wa-name-btn';
+    btn.dataset.name = name;
+    btn.innerHTML    = `
+      <span class="nb-avatar" style="background:${colour}">${avatarInitials(name)}</span>
+      <span class="nb-label">${name}</span>
+      <span class="nb-check">✓</span>`;
+    btn.addEventListener('click', () => selectName(name));
+    namePicker.appendChild(btn);
+  });
+
+  // "Skip" option
+  const noneBtn         = document.createElement('button');
+  noneBtn.type          = 'button';
+  noneBtn.className     = 'wa-name-btn none-btn';
+  noneBtn.dataset.name  = '';
+  noneBtn.innerHTML     = `<span class="nb-label">Skip — no highlight</span><span class="nb-check">✓</span>`;
+  noneBtn.addEventListener('click', () => selectName(''));
+  namePicker.appendChild(noneBtn);
+
+  nameField.style.display = '';
+}
+
+function selectName(name)
+{
+  selectedName = name;
+  namePicker.querySelectorAll('.wa-name-btn').forEach(btn =>
+  {
+    btn.classList.toggle('selected', btn.dataset.name === name);
+  });
+}
+
+// ── File handling ───────────────────────────────────────────
+
+fileInput.addEventListener('change', () =>
+{
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+dropzone.addEventListener('dragover', e =>
+{
+  e.preventDefault();
+  dropzone.classList.add('drag-over');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e =>
+{
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(file)
+{
+  if (!file.name.endsWith('.txt'))
+  {
+    setStatus('Please select a .txt file exported from WhatsApp.', 'error');
+    return;
+  }
+
+  const reader  = new FileReader();
+  reader.onload = e =>
+  {
+    try
+    {
+      parsedMessages = parseWaTxt(e.target.result);
+      const senders  = extractSenders(parsedMessages);
+      buildNamePicker(senders);
+      dzLabel.textContent = `✅  ${file.name}`;
+      convertBtn.disabled = false;
+
+      const msgCount = parsedMessages.filter(m => m.type === 'msg').length;
+      chatTitle      = file.name.replace(/\.txt$/i, '');
+      setStatus(`${msgCount} messages · ${senders.length} participant${senders.length !== 1 ? 's' : ''} — select your name below`, 'ok');
+    }
+    catch (err)
+    {
+      setStatus('Error reading file: ' + err.message, 'error');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── Convert ─────────────────────────────────────────────────
+
+convertBtn.addEventListener('click', () =>
+{
+  if (!parsedMessages.length) return;
+
+  try
+  {
+    // Build HTML referencing external CSS (for download pair)
+    generatedHtml = buildHtml(parsedMessages, selectedName, 'whatsapp.css');
+
+    // Build inlined version for iframe preview
+    const chatCss  = getWaChatCss();
+    const inlined  = generatedHtml.replace(
+      `<link rel="stylesheet" href="whatsapp.css">`,
+      `<style>${chatCss}</style>`
+    );
+
+    const blob    = new Blob([inlined], { type: 'text/html' });
+    previewFrame.src = URL.createObjectURL(blob);
+
+    const msgCount = parsedMessages.filter(m => m.type === 'msg').length;
+    previewLabel.textContent = `Preview — ${chatTitle}`;
+    previewPanel.classList.add('visible');
+    setStatus(`✓ Converted ${msgCount} messages from "${chatTitle}"`, 'ok');
+  }
+  catch (err)
+  {
+    setStatus('Error: ' + err.message, 'error');
+    console.error(err);
+  }
+});
+
+// ── Download HTML ────────────────────────────────────────────
+
+downloadBtn.addEventListener('click', () =>
+{
+  if (!generatedHtml) return;
+  const blob = new Blob([generatedHtml], { type: 'text/html' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = (chatTitle || 'whatsapp-chat') + '.html';
+  a.click();
+});
+
+// ── Download CSS ─────────────────────────────────────────────
+
+downloadCssBtn.addEventListener('click', () =>
+{
+  const cssContent = `/* WhatsApp Chat Export — companion stylesheet */\n/* Place alongside your downloaded HTML file and name it: whatsapp.css */\n\n` + getWaChatCss();
+  const blob = new Blob([cssContent], { type: 'text/css' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'whatsapp.css';
+  a.click();
+});
+</script>
+
+</body>
+</html>
