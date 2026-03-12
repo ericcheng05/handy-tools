@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSN Chat Converter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="msn-converter">
+
+  <!-- ── Converter Card ── -->
+  <div class="msn-converter-card">
+    <h2><span class="icon">💬</span> MSN Chat Converter</h2>
+    <p>Upload an <code>.xml</code> file exported from <strong>MSN Messenger</strong> (Windows Live Messenger). Your chat log will be rendered as a beautiful, styled HTML page — instantly, entirely in your browser.</p>
+
+    <!-- Drop zone -->
+    <label class="msn-dropzone" id="dropzone">
+      <span class="dz-icon">📂</span>
+      <span class="dz-label" id="dz-label">Drop your .xml chat log here</span>
+      <span class="dz-sub">or click to browse · processed entirely in your browser</span>
+      <input type="file" id="file-input" accept=".xml">
+    </label>
+
+    <!-- "My name" picker — populated after file is loaded -->
+    <div class="msn-field" id="name-field" style="display:none">
+      <label>Which one is you? <span class="msn-field-hint">(your messages will appear on the right)</span></label>
+      <div class="msn-name-picker" id="name-picker"></div>
+    </div>
+
+    <button class="msn-btn" id="convert-btn" disabled>
+      ✨ Convert to HTML
+    </button>
+
+    <div class="msn-status" id="status"></div>
+  </div>
+
+  <!-- ── Preview Panel ── -->
+  <div class="msn-preview-panel" id="preview-panel">
+    <div class="msn-preview-toolbar">
+      <span id="preview-label">Preview</span>
+      <div style="display:flex;gap:8px">
+        <button class="msn-btn-sm" id="download-css-btn">⬇ Download CSS</button>
+        <button class="msn-btn-sm" id="download-btn">⬇ Download HTML</button>
+      </div>
+    </div>
+    <iframe class="msn-preview-frame" id="preview-frame" sandbox="allow-same-origin"></iframe>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   MSN / Windows Live Messenger XML Log Parser & HTML Generator
+   ============================================================
+
+   MSN Messenger saves chat logs as XML with this structure:
+
+   <Log FirstSessionID="1" LastSessionID="N">
+     <Message Date="D/M/YYYY" Time="H:MM:SS"
+              DateTime="ISO8601Z" SessionID="N">
+       <From><User FriendlyName="Sender Name"/></From>
+       <To>
+         <User FriendlyName="Recipient 1"/>
+         [<User FriendlyName="Recipient 2"/>]  <!-- group chats -->
+       </To>
+       <Text Style="font-family:Tahoma; color:#000000; ">
+         Message body (may contain \r\n line breaks)
+       </Text>
+     </Message>
+     ...
+   </Log>
+
+   Notes:
+   - Date format is D/M/YYYY (day/month — NOT month/day)
+   - Time is local time; DateTime is UTC ISO-8601
+   - SessionID groups messages into conversation sessions
+   - Multiple <User> in <To> indicates a multi-party chat
+   - Text content is HTML-entity encoded by MSN
+   ============================================================ */
+
+// ── Utility ────────────────────────────────────────────────
+
+function esc(str)
+{
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function linkify(text)
+{
+  const urlRe = /https?:\/\/[^\s<>"]+/g;
+  return esc(text).replace(urlRe, url =>
+    `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
+  );
+}
+
+/** Stable colour index per unique sender */
+function makeColourMap(senders)
+{
+  const map = {};
+  let i = 0;
+  for (const s of senders) { if (!(s in map)) map[s] = i++ % 8; }
+  return map;
+}
+
+/** Avatar initials */
+function initials(name)
+{
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0]; // CJK — single char
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+/** Parse D/M/YYYY → Date object */
+function parseMsnDate(ds)
+{
+  const parts = ds.split('/');
+  if (parts.length !== 3) return new Date(ds);
+  const [d, m, y] = parts.map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Format a date string for display */
+function formatDateLabel(ds)
+{
+  const date = parseMsnDate(ds);
+  if (isNaN(date)) return ds;
+  return date.toLocaleDateString('en-US',
+  {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+// ── Parser ─────────────────────────────────────────────────
+
+/**
+ * Parse MSN Messenger XML log.
+ * Returns { participants, sessions, messages }
+ *
+ * messages: Array of objects, one of:
+ *   { type: 'date',    dateStr }
+ *   { type: 'session', sessionId, dateStr, timeStr, participants }
+ *   { type: 'msg',     dateStr, timeStr, sessionId, sender, recipients, text }
+ */
+function parseMsnXml(xmlText)
+{
+  // Use DOMParser — fully available in all modern browsers
+  const parser  = new DOMParser();
+  const doc     = parser.parseFromString(xmlText, 'application/xml');
+
+  // Check for parse errors
+  const parseErr = doc.querySelector('parsererror');
+  if (parseErr)
+  {
+    throw new Error('XML parse error: ' + parseErr.textContent.slice(0, 120));
+  }
+
+  const logEl    = doc.documentElement;
+  const msgNodes = logEl.querySelectorAll('Message');
+
+  const rawMessages = [];
+  const senderSet   = new Set();
+
+  msgNodes.forEach(node =>
+  {
+    const dateStr   = node.getAttribute('Date')     || '';
+    const timeStr   = node.getAttribute('Time')     || '';
+    const sessionId = node.getAttribute('SessionID') || '';
+
+    const fromUser  = node.querySelector('From > User');
+    const toUsers   = Array.from(node.querySelectorAll('To > User'));
+    const textEl    = node.querySelector('Text');
+
+    const sender     = fromUser ? fromUser.getAttribute('FriendlyName') : '';
+    const recipients = toUsers.map(u => u.getAttribute('FriendlyName'));
+    const text       = textEl ? (textEl.textContent || '') : '';
+
+    if (sender) senderSet.add(sender);
+
+    rawMessages.push({ dateStr, timeStr, sessionId, sender, recipients, text });
+  });
+
+  // Inject date-separator and session-separator nodes
+  const result      = [];
+  let lastDate      = null;
+  let lastSessionId = null;
+
+  for (const msg of rawMessages)
+  {
+    // New date → date separator
+    if (msg.dateStr !== lastDate)
+    {
+      result.push({ type: 'date', dateStr: msg.dateStr });
+      lastDate = msg.dateStr;
+    }
+
+    // New session → session marker
+    if (msg.sessionId !== lastSessionId)
+    {
+      result.push({
+        type:         'session',
+        sessionId:    msg.sessionId,
+        dateStr:      msg.dateStr,
+        timeStr:      msg.timeStr,
+        participants: [msg.sender, ...msg.recipients].filter(Boolean)
+      });
+      lastSessionId = msg.sessionId;
+    }
+
+    result.push({ type: 'msg', ...msg });
+  }
+
+  return { participants: [...senderSet], messages: result };
+}
+
+// ── HTML Generator ─────────────────────────────────────────
+
+/**
+ * Build a complete standalone HTML document.
+ * @param {object} parsed   – result of parseMsnXml()
+ * @param {string} myName   – current user's display name
+ * @param {string} cssPath  – path to companion CSS file
+ */
+function buildHtml(parsed, myName, cssPath)
+{
+  const { participants, messages } = parsed;
+  const colourMap = makeColourMap(participants);
+
+  // Member pills
+  const pillsHtml = participants
+    .map(s => `<span class="mc-pill">${esc(s)}</span>`)
+    .join('\n      ');
+
+  // Derive chat title from participants
+  let chatName;
+  const others = participants.filter(p => p !== myName);
+  if (participants.length <= 2 && others.length === 1) chatName = others[0];
+  else if (participants.length > 2)                    chatName = `Group (${participants.length})`;
+  else                                                 chatName = participants[0] || 'MSN Chat';
+
+  // Build message HTML
+  let bodyHtml   = '';
+  let lastSender = null;
+
+  for (const m of messages)
+  {
+    // ── Date separator ──
+    if (m.type === 'date')
+    {
+      lastSender = null;
+      bodyHtml += `
+  <div class="mc-date-sep"><span class="mc-date-label">${esc(formatDateLabel(m.dateStr))}</span></div>`;
+      continue;
+    }
+
+    // ── Session divider ──
+    if (m.type === 'session')
+    {
+      lastSender = null;
+      const uniqueP = [...new Set(m.participants)];
+      bodyHtml += `
+  <div class="mc-session-row">
+    <div class="mc-session-badge">
+      <span class="mc-session-icon">💬</span>
+      <span>Conversation ${esc(m.sessionId)} · ${esc(m.timeStr)}</span>
+      <span class="mc-session-people">${uniqueP.map(esc).join(' · ')}</span>
+    </div>
+  </div>`;
+      continue;
+    }
+
+    // ── Regular message ──
+    const isMe         = myName && m.sender === myName;
+    const isFirstInGrp = m.sender !== lastSender;
+    const avIdx        = colourMap[m.sender] ?? 0;
+    const avInit       = initials(m.sender);
+
+    const rowClasses = [
+      'mc-msg-row',
+      isMe         ? 'is-me'          : '',
+      isFirstInGrp ? 'first-in-group' : ''
+    ].filter(Boolean).join(' ');
+
+    // Avatar
+    const avatarHtml = (!isMe && isFirstInGrp)
+      ? `<div class="mc-avatar av-${avIdx}">${esc(avInit)}</div>`
+      : (!isMe ? `<div class="mc-avatar-placeholder"></div>` : '');
+
+    // Sender name (incoming only, first in group)
+    const senderHtml = (isFirstInGrp && !isMe)
+      ? `<div class="mc-sender-name av-text-${avIdx}">${esc(m.sender)}</div>`
+      : '';
+
+    // Bubble
+    const bubbleContent = `<div class="mc-bubble">${linkify(m.text)}</div>`;
+
+    bodyHtml += `
+  <div class="${rowClasses}">
+    ${avatarHtml}
+    <div class="mc-msg-group">
+      ${senderHtml}
+      <div class="mc-bubble-wrap">
+        ${bubbleContent}
+        <span class="mc-timestamp">${esc(m.timeStr)}</span>
+      </div>
+    </div>
+  </div>`;
+
+    lastSender = m.sender;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(chatName)} — MSN Chat Log</title>
+<link rel="stylesheet" href="${esc(cssPath)}">
+</head>
+<body>
+
+<div class="mc-header">
+  <div class="mc-header-icon">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+      <rect width="48" height="48" rx="12" fill="#0078D4"/>
+      <path d="M10 14h28v2H10zM10 20h28v2H10zM10 26h20v2H10z" fill="white" opacity="0.9"/>
+      <circle cx="34" cy="34" r="8" fill="#50E6FF"/>
+      <path d="M31 34l2 2 4-4" stroke="#0078D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="mc-header-text">
+    <h1>${esc(chatName)}</h1>
+    <p>MSN Messenger / Windows Live Chat Log</p>
+    <div class="mc-member-pills">
+      ${pillsHtml}
+    </div>
+  </div>
+</div>
+
+<div class="mc-chat">
+${bodyHtml}
+</div>
+
+</body>
+</html>`;
+}
+
+// ── Inline CSS (for sandboxed preview iframe) ──────────────
+
+function getMsnChatCss()
+{
+  return `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+:root {
+  --msn-blue: #0078D4;
+  --msn-blue-dark: #005a9e;
+  --msn-sky: #50E6FF;
+  --bg: #f3f9ff;
+  --bubble-me: #ddeeff;
+  --bubble-other: #ffffff;
+  --timestamp: #8899aa;
+  --system-bg: rgba(255,255,255,0.85);
+  --border: rgba(0,120,212,0.12);
+  --av-0:#e05c5c; --av-1:#e07d3c; --av-2:#c9a42a; --av-3:#4caf7d;
+  --av-4:#2a9dc9; --av-5:#7b5cf0; --av-6:#c94e8e; --av-7:#5c8ee0;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.mc-header {
+  background: linear-gradient(135deg, var(--msn-blue-dark) 0%, var(--msn-blue) 100%);
+  color: #fff;
+  padding: 20px 28px 18px;
+  display: flex; align-items: center; gap: 16px;
+}
+.mc-header-icon {
+  width: 52px; height: 52px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.mc-header h1 { font-size: 1.2rem; font-weight: 700; margin-bottom: 2px; }
+.mc-header p { font-size: 0.75rem; color: rgba(255,255,255,0.65); margin-bottom: 8px; font-family: 'DM Mono', monospace; }
+.mc-member-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-pill {
+  background: rgba(255,255,255,0.18); color: #fff;
+  font-size: 0.72rem; font-weight: 600;
+  padding: 3px 10px; border-radius: 12px;
+}
+
+/* ── Chat area ── */
+.mc-chat { max-width: 800px; margin: 0 auto; padding: 16px 20px 48px; }
+
+/* ── Date separator ── */
+.mc-date-sep { display: flex; justify-content: center; margin: 24px 0 8px; }
+.mc-date-label {
+  background: var(--system-bg); color: var(--timestamp);
+  font-size: 0.7rem; font-weight: 600; font-family: 'DM Mono', monospace;
+  padding: 4px 14px; border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,120,212,0.08);
+  border: 1px solid var(--border);
+}
+
+/* ── Session badge ── */
+.mc-session-row { display: flex; justify-content: center; margin: 16px 0 8px; }
+.mc-session-badge {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(0,120,212,0.06);
+  border: 1px solid rgba(0,120,212,0.18);
+  border-radius: 20px; padding: 6px 16px;
+  font-size: 0.7rem; font-family: 'DM Mono', monospace;
+  color: var(--msn-blue);
+}
+.mc-session-people { color: var(--timestamp); font-size: 0.65rem; }
+.mc-session-icon { font-size: 0.9rem; }
+
+/* ── Message row ── */
+.mc-msg-row {
+  display: flex; align-items: flex-end; gap: 8px;
+  margin-bottom: 2px;
+}
+.mc-msg-row.is-me { flex-direction: row-reverse; }
+.mc-msg-row.first-in-group { margin-top: 10px; }
+
+/* ── Avatar ── */
+.mc-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 700; color: #fff;
+  flex-shrink: 0; align-self: flex-end;
+}
+.mc-avatar-placeholder { width: 32px; flex-shrink: 0; }
+.mc-msg-row.is-me .mc-avatar { display: none; }
+.av-0{background:var(--av-0);} .av-1{background:var(--av-1);}
+.av-2{background:var(--av-2);} .av-3{background:var(--av-3);}
+.av-4{background:var(--av-4);} .av-5{background:var(--av-5);}
+.av-6{background:var(--av-6);} .av-7{background:var(--av-7);}
+
+/* ── Sender name ── */
+.mc-sender-name {
+  font-size: 0.7rem; font-weight: 700; margin-bottom: 2px; padding-left: 2px;
+}
+.av-text-0{color:var(--av-0);} .av-text-1{color:var(--av-1);}
+.av-text-2{color:var(--av-2);} .av-text-3{color:var(--av-3);}
+.av-text-4{color:var(--av-4);} .av-text-5{color:var(--av-5);}
+.av-text-6{color:var(--av-6);} .av-text-7{color:var(--av-7);}
+
+/* ── Message group ── */
+.mc-msg-group { display: flex; flex-direction: column; max-width: 70%; }
+.mc-msg-row.is-me .mc-msg-group { align-items: flex-end; }
+
+/* ── Bubble wrap ── */
+.mc-bubble-wrap { display: flex; align-items: flex-end; gap: 6px; }
+.mc-msg-row.is-me .mc-bubble-wrap { flex-direction: row-reverse; }
+
+/* ── Bubble ── */
+.mc-bubble {
+  background: var(--bubble-other);
+  border-radius: 12px 12px 12px 4px;
+  padding: 8px 13px;
+  font-size: 0.9rem; line-height: 1.6;
+  color: #1a2233;
+  border: 1px solid var(--border);
+  word-break: break-word; white-space: pre-wrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  position: relative;
+}
+.mc-msg-row.is-me .mc-bubble {
+  background: var(--bubble-me);
+  border-radius: 12px 12px 4px 12px;
+  border-color: rgba(0,120,212,0.2);
+}
+.mc-bubble a { color: var(--msn-blue); text-decoration: underline; font-size: 0.85rem; }
+
+/* Tails */
+.mc-bubble::before {
+  content: ''; position: absolute; top: 0; left: -7px;
+  border-width: 0 7px 7px 0; border-style: solid;
+  border-color: transparent var(--border) transparent transparent;
+}
+.mc-bubble::after {
+  content: ''; position: absolute; top: 0; left: -5px;
+  border-width: 0 6px 6px 0; border-style: solid;
+  border-color: transparent var(--bubble-other) transparent transparent;
+}
+.mc-msg-row.is-me .mc-bubble::before {
+  left: auto; right: -7px;
+  border-width: 0 0 7px 7px;
+  border-color: transparent transparent transparent rgba(0,120,212,0.2);
+}
+.mc-msg-row.is-me .mc-bubble::after {
+  left: auto; right: -5px;
+  border-width: 0 0 6px 6px;
+  border-color: transparent transparent transparent var(--bubble-me);
+}
+
+/* ── Timestamp ── */
+.mc-timestamp {
+  font-size: 0.65rem; color: var(--timestamp);
+  font-family: 'DM Mono', monospace;
+  flex-shrink: 0; margin-bottom: 3px; white-space: nowrap;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .mc-msg-group { max-width: 85%; }
+  .mc-header { padding: 14px 16px; }
+  .mc-chat { padding: 10px 10px 32px; }
+}
+`.trim();
+}
+
+// ── UI Wiring ──────────────────────────────────────────────
+
+const dropzone      = document.getElementById('dropzone');
+const fileInput     = document.getElementById('file-input');
+const dzLabel       = document.getElementById('dz-label');
+const nameField     = document.getElementById('name-field');
+const namePicker    = document.getElementById('name-picker');
+const convertBtn    = document.getElementById('convert-btn');
+const statusEl      = document.getElementById('status');
+const previewPanel  = document.getElementById('preview-panel');
+const previewFrame  = document.getElementById('preview-frame');
+const previewLabel  = document.getElementById('preview-label');
+const downloadBtn    = document.getElementById('download-btn');
+const downloadCssBtn = document.getElementById('download-css-btn');
+
+const AV_COLOURS = [
+  '#e05c5c','#e07d3c','#c9a42a','#4caf7d',
+  '#2a9dc9','#7b5cf0','#c94e8e','#5c8ee0'
+];
+
+let parsedData     = null;
+let selectedName   = '';
+let generatedHtml  = '';
+let chatTitle      = '';
+
+function setStatus(msg, cls)
+{
+  statusEl.textContent = msg;
+  statusEl.className   = 'msn-status ' + (cls || '');
+}
+
+function avatarInitials(name)
+{
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0];
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+function buildNamePicker(participants)
+{
+  namePicker.innerHTML = '';
+  selectedName = '';
+
+  participants.forEach((name, idx) =>
+  {
+    const colour = AV_COLOURS[idx % AV_COLOURS.length];
+    const btn    = document.createElement('button');
+    btn.type         = 'button';
+    btn.className    = 'msn-name-btn';
+    btn.dataset.name = name;
+    btn.innerHTML    = `
+      <span class="nb-avatar" style="background:${colour}">${avatarInitials(name)}</span>
+      <span class="nb-label">${name}</span>
+      <span class="nb-check">✓</span>`;
+    btn.addEventListener('click', () => selectName(name));
+    namePicker.appendChild(btn);
+  });
+
+  // Skip option
+  const noneBtn         = document.createElement('button');
+  noneBtn.type          = 'button';
+  noneBtn.className     = 'msn-name-btn none-btn';
+  noneBtn.dataset.name  = '';
+  noneBtn.innerHTML     = `<span class="nb-label">Skip — no highlight</span><span class="nb-check">✓</span>`;
+  noneBtn.addEventListener('click', () => selectName(''));
+  namePicker.appendChild(noneBtn);
+
+  nameField.style.display = '';
+}
+
+function selectName(name)
+{
+  selectedName = name;
+  namePicker.querySelectorAll('.msn-name-btn').forEach(btn =>
+  {
+    btn.classList.toggle('selected', btn.dataset.name === name);
+  });
+}
+
+// ── File handling ───────────────────────────────────────────
+
+fileInput.addEventListener('change', () =>
+{
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+dropzone.addEventListener('dragover', e =>
+{
+  e.preventDefault();
+  dropzone.classList.add('drag-over');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e =>
+{
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(file)
+{
+  if (!file.name.toLowerCase().endsWith('.xml'))
+  {
+    setStatus('Please select an .xml file exported from MSN Messenger.', 'error');
+    return;
+  }
+
+  const reader  = new FileReader();
+  reader.onload = e =>
+  {
+    try
+    {
+      parsedData = parseMsnXml(e.target.result);
+      buildNamePicker(parsedData.participants);
+      dzLabel.textContent = `✅  ${file.name}`;
+      convertBtn.disabled = false;
+      chatTitle = file.name.replace(/\.xml$/i, '');
+
+      const msgCount = parsedData.messages.filter(m => m.type === 'msg').length;
+      setStatus(
+        `${msgCount} messages · ${parsedData.participants.length} participants — select your name below`,
+        'ok'
+      );
+    }
+    catch (err)
+    {
+      setStatus('Error reading file: ' + err.message, 'error');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── Convert ─────────────────────────────────────────────────
+
+convertBtn.addEventListener('click', () =>
+{
+  if (!parsedData) return;
+
+  try
+  {
+    // External CSS version (for download pair)
+    generatedHtml = buildHtml(parsedData, selectedName, 'msn.css');
+
+    // Self-contained version for iframe preview
+    const chatCss = getMsnChatCss();
+    const inlined = generatedHtml.replace(
+      `<link rel="stylesheet" href="msn.css">`,
+      `<style>${chatCss}</style>`
+    );
+
+    const blob = new Blob([inlined], { type: 'text/html' });
+    previewFrame.src = URL.createObjectURL(blob);
+
+    const msgCount = parsedData.messages.filter(m => m.type === 'msg').length;
+    previewLabel.textContent = `Preview — ${chatTitle}`;
+    previewPanel.classList.add('visible');
+    setStatus(`✓ Converted ${msgCount} messages from "${chatTitle}"`, 'ok');
+  }
+  catch (err)
+  {
+    setStatus('Error: ' + err.message, 'error');
+    console.error(err);
+  }
+});
+
+// ── Download HTML ────────────────────────────────────────────
+
+downloadBtn.addEventListener('click', () =>
+{
+  if (!generatedHtml) return;
+  const blob = new Blob([generatedHtml], { type: 'text/html' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = (chatTitle || 'msn-chat') + '.html';
+  a.click();
+});
+
+// ── Download CSS ─────────────────────────────────────────────
+
+downloadCssBtn.addEventListener('click', () =>
+{
+  const cssContent = `/* MSN Chat Log — companion stylesheet */\n/* Place alongside your downloaded HTML file and name it: msn.css */\n\n` + getMsnChatCss();
+  const blob = new Blob([cssContent], { type: 'text/css' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'msn.css';
+  a.click();
+});
+</script>
+
+</body>
+</html>

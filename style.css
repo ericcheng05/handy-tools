@@ -473,3 +473,27 @@ body::after
 .app-grid--dashboard .app-card:nth-child(1) { animation-delay: 0.54s; }
 .app-grid--dashboard .app-card:nth-child(2) { animation-delay: 0.62s; }
 .app-grid--dashboard .app-card:nth-child(3) { animation-delay: 0.70s; }
+
+/* ── MSN Blue card variant (add to existing style.css) ── */
+
+  --blue:       #0078D4;
+  --blue-bg:    rgba(0,120,212,0.07);
+  --blue-glow:  rgba(0,120,212,0.14);
+
+/* Add to :root block above */
+
+.app-card.blue::before  { background: linear-gradient(90deg, var(--blue), #50E6FF); }
+
+.icon-blue { background: linear-gradient(135deg, #50E6FF 0%, #0078D4 100%); }
+
+.app-card.live.blue:hover .card-arrow
+{
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  transform: translate(2px, -2px);
+}
+
+/* Animation delay for 3rd app card */
+.app-card:nth-child(3) { animation-delay: 0.46s; }
+.app-card:nth-child(4) { animation-delay: 0.54s; }
