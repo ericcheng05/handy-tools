@@ -111,8 +111,8 @@
         const meta = metaBySlug[chain.slug] || {};
         return chain.branches.map(b => ({
           slug:   chain.slug,
-          nameEn: meta['name-en'] || chain.slug,
-          nameZh: meta['name-zh'] || '',
+          nameEn: meta['name_en'] || chain.slug,
+          nameZh: meta['name_zh'] || '',
           ...b
         }));
       });
@@ -355,7 +355,7 @@
 
   const LINK_META = {
     home:     { cls: 'home',     icon: '⊕', label: 'Home' },
-    dineIn:   { cls: 'dinein',   icon: '🍽', label: 'Dine In' },
+    dinein:   { cls: 'dinein',   icon: '🍽', label: 'Dine In' },
     takeaway: { cls: 'takeaway', icon: '📦', label: 'Takeaway' },
   };
 
@@ -386,9 +386,9 @@
       return `<a class="link-btn ${m.cls}" href="${esc(url)}" target="_blank" rel="noopener">${m.icon} ${m.label}</a>`;
     }).join('');
 
-    const tableCount  = r.dineInTables.length;
+    const tableCount  = r.dinein_tables.length;
     const tablesInner = tableCount
-      ? r.dineInTables.map(t =>
+      ? r.dinein_tables.map(t =>
           `<a class="table-btn" href="${esc(t.url)}" target="_blank" rel="noopener" title="Dine In · Table ${t.id}">${t.id}</a>`
         ).join('')
       : `<span class="no-tables">No table links documented yet</span>`;
@@ -398,7 +398,7 @@
       <div class="card-body">
         <div class="card-meta">
           <span class="branch-tag">${esc(r.branch)}</span>
-          <a class="system-link" href="${esc(r.systemUrl)}" target="_blank" rel="noopener">↗ ${esc(r.system)}</a>
+          <a class="system-link" href="${esc(r.system_url)}" target="_blank" rel="noopener">↗ ${esc(r.system)}</a>
         </div>
         <div class="card-title">${esc(r.nameEn)}${r.nameZh ? `<span class="card-title-zh">${esc(r.nameZh)}</span>` : ''}</div>
         ${linksHTML ? `<div class="links-row">${linksHTML}</div>` : ''}
