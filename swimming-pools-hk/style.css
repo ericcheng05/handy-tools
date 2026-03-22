@@ -494,7 +494,8 @@ body::after
   border: 1px solid var(--amber-border);
 }
 
-.badge-last-admission
+/* Info tag — secondary badge for additional context (Last Admission, Maintenance, etc.) */
+.badge-info
 {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -502,7 +503,7 @@ body::after
   padding: 3px 8px;
   border-radius: 6px;
   white-space: nowrap;
-  background: rgba(146,96,10,0.08);
+  background: var(--amber-bg);
   color: var(--amber);
   border: 1px solid var(--amber-border);
 }

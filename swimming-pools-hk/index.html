@@ -272,7 +272,7 @@ function computePoolStatus(pool)
   {
     if (tc.facility_ids !== null) continue;
     if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
-      return { open: false, reason: "Temporary Closure" + (tc.reason_en ? ": " + tc.reason_en : "") };
+      return { open: false, tag: "Temporary Closure" };
   }
 
   // Whole-pool annual maintenance
@@ -285,7 +285,7 @@ function computePoolStatus(pool)
     const inMaint = start <= end
       ? today >= start && today <= end
       : today >= start || today <= end;
-    if (inMaint) return { open: false, reason: "Annual Maintenance" };
+    if (inMaint) return { open: false, tag: "Annual Maintenance" };
   }
 
   // Sessions for today
@@ -293,7 +293,11 @@ function computePoolStatus(pool)
     s.days.includes(TODAY_DOW) && inDateRange(s.valid_from, s.valid_until)
   );
 
-  if (sessions.length === 0) return { open: false, reason: "No session today" };
+  // TODO: when a public holiday data source is added, check here whether today is a
+  // public holiday and use weekly_cleansing_day.alternative instead of .primary.
+  // Also, certain pools close entirely on public holidays — that closure logic will
+  // also be applied here once the data source is available.
+  if (sessions.length === 0) return { open: false, tag: "No Session Today" };
 
   // Weekly cleansing — runs from 10:00 to the end of session 2 (slot with session === 2).
   // The pool reopens for session 3. Primary cleansing day is used here; alternative day
@@ -308,29 +312,47 @@ function computePoolStatus(pool)
       .find(sl => sl.session === 2);
 
     if (slot2 && TODAY_H >= CLEANSING_START && TODAY_H < toH(slot2.close))
-      return { open: false, reason: "Weekly Cleansing", cleansingUntil: slot2.close };
+      return { open: false, tag: "Weekly Cleansing", cleansingUntil: slot2.close };
   }
 
+  // All slots for today, sorted by open time — used for session break and end-of-day checks
+  const allTodaySlots = sessions
+    .flatMap(s => s.slots || [])
+    .sort((a, b) => toH(a.open) - toH(b.open));
+
   // Inside an open slot right now?
-  for (const sess of sessions)
+  for (const slot of allTodaySlots)
   {
-    for (const slot of (sess.slots || []))
+    if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
     {
-      if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
-        return { open: true, reason: "Session " + slot.session, slot };
+      const minsLeft = (toH(slot.close) - TODAY_H) * 60;
+      let tag = null;
+      if (minsLeft <= 30)       tag = "No Admission";
+      else if (minsLeft <= 60)  tag = "Session Ends in 60 Minutes";
+      return { open: true, tag, slot };
     }
   }
 
-  // Next upcoming slot today
-  const upcoming = sessions
+  // Between sessions (session break) — a future slot exists today
+  const nextSlot = allTodaySlots.find(sl => toH(sl.open) > TODAY_H);
+  if (nextSlot)
+    return { open: false, tag: "Session Break", nextOpen: nextSlot.open };
+
+  // All slots have passed — end of day. Look for first valid opening tomorrow.
+  const tomorrowDow = (TODAY_DOW + 1) % 7;
+  const tomorrowSessions = (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(tomorrowDow) && inDateRange(s.valid_from, s.valid_until)
+  );
+  const tomorrowFirst = tomorrowSessions
     .flatMap(s => s.slots || [])
-    .filter(sl => toH(sl.open) > TODAY_H)
-    .sort((a, b) => toH(a.open) - toH(b.open));
+    .filter(sl => sl.session === 1 || toH(sl.open) < 10)   // first slot of the day
+    .sort((a, b) => toH(a.open) - toH(b.open))[0];
 
-  if (upcoming.length > 0)
-    return { open: false, reason: "Opens at " + upcoming[0].open, nextTime: upcoming[0].open };
-
-  return { open: false, reason: "Closed for today" };
+  return {
+    open:    false,
+    tag:     "End of Day",
+    nextOpen: tomorrowFirst ? tomorrowFirst.open : null
+  };
 }
 
 function computeOpenFids(pool)
@@ -452,28 +474,15 @@ function buildPoolCard(pool, idx)
   card.className = "pool-card" + (pool._status.open ? "" : " closed");
   card.style.animationDelay = Math.min(idx * 0.035, 0.4) + "s";
 
-  // Status badge
-  let badgeClass = "closed";
-  let badgeText  = pool._status.reason;
-  if (pool._status.open)
-  {
-    badgeClass = "open";
-    badgeText  = "● Open";
-  }
-  else if (pool._status.reason.includes("Maintenance"))
-  {
-    badgeClass = "maintenance";
-    badgeText  = "Maintenance";
-  }
+  // Status badge — always just OPEN or CLOSED
+  const statusBadge = pool._status.open
+    ? `<span class="status-badge open">● Open</span>`
+    : `<span class="status-badge closed">● Closed</span>`;
 
-  // Last-admission warning — shown when open and within 30 min of session close
-  let lastAdmissionTag = "";
-  if (pool._status.open && pool._status.slot)
-  {
-    const minsLeft = (toH(pool._status.slot.close) - TODAY_H) * 60;
-    if (minsLeft <= 30)
-      lastAdmissionTag = `<span class="badge-last-admission">⚠ Last admission</span>`;
-  }
+  // Info tag — additional context badge, shown when tag is set
+  const infoTag = pool._status.tag
+    ? `<span class="badge-info">${esc(pool._status.tag)}</span>`
+    : "";
 
   // Session line
   let sessionHtml;
@@ -486,14 +495,35 @@ function buildPoolCard(pool, idx)
         <span class="session-time">${esc(pool._status.slot.open)} – ${esc(pool._status.slot.close)}</span>
       </div>`;
   }
-  else if (pool._status.reason === "Weekly Cleansing")
+  else if (pool._status.tag === "Weekly Cleansing")
   {
-    const reopens = pool._status.cleansingUntil || "";
     sessionHtml = `
       <div class="session-info">
         <span class="session-dot closed-now"></span>
         <span>Weekly Cleansing</span>
-        ${reopens ? `<span class="session-time">Reopens at ${esc(reopens)}</span>` : ""}
+        ${pool._status.cleansingUntil
+          ? `<span class="session-time">Reopens at ${esc(pool._status.cleansingUntil)}</span>`
+          : ""}
+      </div>`;
+  }
+  else if (pool._status.tag === "Session Break" && pool._status.nextOpen)
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>Session Break</span>
+        <span class="session-time">Reopens at ${esc(pool._status.nextOpen)}</span>
+      </div>`;
+  }
+  else if (pool._status.tag === "End of Day")
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>End of Day</span>
+        ${pool._status.nextOpen
+          ? `<span class="session-time">Tomorrow from ${esc(pool._status.nextOpen)}</span>`
+          : ""}
       </div>`;
   }
   else
@@ -501,7 +531,7 @@ function buildPoolCard(pool, idx)
     sessionHtml = `
       <div class="session-info">
         <span class="session-dot closed-now"></span>
-        <span>${esc(pool._status.reason)}</span>
+        <span>${esc(pool._status.tag || "Closed")}</span>
       </div>`;
   }
 
@@ -570,8 +600,8 @@ function buildPoolCard(pool, idx)
         <div class="name-en">${esc(pool.name_en)}</div>
       </div>
       <div class="card-badges">
-        <span class="status-badge ${badgeClass}">${esc(badgeText)}</span>
-        ${lastAdmissionTag}
+        ${statusBadge}
+        ${infoTag}
       </div>
     </div>
     ${sessionHtml}
