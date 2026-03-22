@@ -253,13 +253,23 @@ function toH(hhmm)
 
 function computePoolStatus(pool)
 {
-  const nowIso = hktNow.toISOString().slice(0, 16);
+  // Build HKT datetime string manually — toISOString() returns UTC regardless of how
+  // the Date was constructed, so it cannot be used for HKT comparisons.
+  const pad    = n => String(n).padStart(2, "0");
+  const nowHkt = hktNow.getFullYear() + "-"
+               + pad(hktNow.getMonth() + 1) + "-"
+               + pad(hktNow.getDate())      + "T"
+               + pad(hktNow.getHours())     + ":"
+               + pad(hktNow.getMinutes());
 
   // Whole-pool temporary closure
+  // facility_ids === null means all facilities → whole pool closed.
+  // A non-null list only closes specific facilities; that is handled per-facility
+  // in computeOpenFids, not here.
   for (const tc of (pool.schedule.temporary_closures || []))
   {
     if (tc.facility_ids !== null) continue;
-    if (nowIso >= tc.start.slice(0, 16) && nowIso <= tc.end.slice(0, 16))
+    if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
       return { open: false, reason: "Temporary Closure" + (tc.reason_en ? ": " + tc.reason_en : "") };
   }
 
@@ -308,12 +318,19 @@ function computePoolStatus(pool)
 function computeOpenFids(pool)
 {
   const allFids = (pool.facilities || []).map(f => f.fid);
-  const nowIso  = hktNow.toISOString().slice(0, 16);
+
+  // Build HKT datetime string (same reason as in computePoolStatus)
+  const pad    = n => String(n).padStart(2, "0");
+  const nowHkt = hktNow.getFullYear() + "-"
+               + pad(hktNow.getMonth() + 1) + "-"
+               + pad(hktNow.getDate())      + "T"
+               + pad(hktNow.getHours())     + ":"
+               + pad(hktNow.getMinutes());
 
   const tcClosed = new Set();
   for (const tc of (pool.schedule.temporary_closures || []))
   {
-    if (nowIso >= tc.start.slice(0, 16) && nowIso <= tc.end.slice(0, 16))
+    if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
       (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.add(f));
   }
 
