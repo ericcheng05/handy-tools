@@ -20,9 +20,8 @@
   <header class="hero">
     <div class="hero-eyebrow">tools.hlcheng.cf</div>
     <h1>LCSD <em>Swimming Pools</em><br>Status</h1>
-    <p class="hero-sub">Opening status for all 45 LCSD public swimming pools across Hong Kong. Facility-level availability, session times, and maintenance notices — computed from LCSD schedule data.</p>
+    <p class="hero-sub">Opening status for LCSD public swimming pools across Hong Kong. Facility-level availability, session times, and maintenance notices — computed from LCSD schedule data.</p>
     <div class="hero-meta">
-      <span class="hero-badge count" id="poolCountBadge">45 pools</span>
       <span class="hero-badge">Client-side</span>
       <span class="hero-badge">LCSD Data</span>
     </div>
@@ -209,7 +208,6 @@ async function loadAll()
 
   hideProgress();
   document.getElementById("summaryStrip").style.display = "flex";
-  document.getElementById("poolCountBadge").textContent = total + " pools";
   updateSummary();
   render();
 
