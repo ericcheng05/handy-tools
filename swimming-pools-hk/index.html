@@ -474,24 +474,50 @@ function buildPoolCard(pool, idx)
 
   const facHtml = facilities.map(f =>
   {
-    const isOpen    = pool._status.open && openFidSet.has(f.fid);
-    const tcReason  = tcReasons.get(f.fid);
-    const tags      = [];
+    const isOpen = pool._status.open && openFidSet.has(f.fid);
+    const tags   = [];
     if (f.indoor) tags.push(`<span class="fac-tag indoor">Indoor</span>`);
     if (f.heated) tags.push(`<span class="fac-tag heated">Heated</span>`);
     const dim = f.dimensions && f.dimensions.length
       ? `<span class="fac-dim">${f.dimensions.length}m</span>` : "";
 
-    const tcIcon = tcReason
-      ? `<span class="fac-tc-icon" title="${esc(tcReason)}">❗</span>` : "";
-
     return `
       <div class="facility-row${isOpen ? "" : " fac-unavail"}">
         <span class="facility-dot ${isOpen ? "fac-open" : "fac-closed"}"></span>
         <span class="facility-name">${esc(f.name_en)}</span>
-        ${tcIcon}${dim}${tags.join("")}
+        ${dim}${tags.join("")}
       </div>`;
   }).join("");
+
+  // Group tc-affected facilities by reason so each distinct reason gets one notice line
+  // Map<reason → facility name[]>
+  const reasonGroups = new Map();
+  for (const f of (pool.facilities || []))
+  {
+    const reason = tcReasons.get(f.fid);
+    if (!reason) continue;
+    if (!reasonGroups.has(reason)) reasonGroups.set(reason, []);
+    reasonGroups.get(reason).push(f.name_en);
+  }
+
+  let tcNoticeHtml = "";
+  if (reasonGroups.size > 0)
+  {
+    const lines = [];
+    reasonGroups.forEach((names, reason) =>
+    {
+      lines.push(
+        `<div class="tc-notice-row">` +
+        `<span class="tc-notice-icon">❗</span>` +
+        `<span class="tc-notice-text">` +
+        `<span class="tc-notice-names">${esc(names.join(", "))}</span>` +
+        `<span class="tc-notice-reason">${esc(reason)}</span>` +
+        `</span>` +
+        `</div>`
+      );
+    });
+    tcNoticeHtml = `<div class="tc-notice-block">${lines.join("")}</div>`;
+  }
 
   card.innerHTML = `
     <div class="card-head">
@@ -506,6 +532,7 @@ function buildPoolCard(pool, idx)
       <div class="facilities-label">Facilities</div>
       <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
     </div>
+    ${tcNoticeHtml}
     <div class="card-address">📍 ${esc(pool.address_en || pool.address_zh || "")}</div>`;
 
   return card;
