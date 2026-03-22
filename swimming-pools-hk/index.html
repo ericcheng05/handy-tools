@@ -483,7 +483,7 @@ function buildPoolCard(pool, idx)
   // Tags that are already fully described by the session line text (Weekly Cleansing,
   // Session Break, End of Day, No Session Today) are suppressed here to avoid repetition.
   const SESSION_LINE_TAGS = new Set([
-    "Weekly Cleansing", "Session Break", "End of Day", "No Session Today"
+    "Weekly Cleansing", "Session Break", "End of Day", "No Session Today", "Annual Maintenance"
   ]);
   const infoTag = pool._status.tag && !SESSION_LINE_TAGS.has(pool._status.tag)
     ? `<span class="badge-info">${esc(pool._status.tag)}</span>`
