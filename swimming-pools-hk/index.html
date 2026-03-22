@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LCSD Swimming Pools — Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Back nav -->
+  <nav class="back-nav">
+    <a class="back-link" href="../">← tools.hlcheng.cf</a>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-eyebrow">tools.hlcheng.cf</div>
+    <h1>LCSD <em>Swimming Pools</em><br>Status</h1>
+    <p class="hero-sub">Opening status for all 45 LCSD public swimming pools across Hong Kong. Facility-level availability, session times, and maintenance notices — computed from LCSD schedule data.</p>
+    <div class="hero-meta">
+      <span class="hero-badge count" id="poolCountBadge">45 pools</span>
+      <span class="hero-badge">Client-side</span>
+      <span class="hero-badge">LCSD Data</span>
+    </div>
+  </header>
+
+  <!-- Summary -->
+  <div class="summary-strip" id="summaryStrip" style="display:none">
+    <div class="summary-stat">
+      <span class="stat-num" id="statTotal">—</span>
+      <span class="stat-label">Total Pools</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="summary-stat">
+      <span class="stat-num open-color" id="statOpen">—</span>
+      <span class="stat-label">Open Now</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="summary-stat">
+      <span class="stat-num closed-color" id="statClosed">—</span>
+      <span class="stat-label">Closed</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div style="display:flex;flex-direction:column;gap:10px;flex:1">
+      <!-- Status filter -->
+      <div class="filter-group">
+        <span class="filter-label">Status</span>
+        <button class="chip active" data-filter-status="all">All</button>
+        <button class="chip" data-filter-status="open">Open Now</button>
+        <button class="chip" data-filter-status="closed">Closed</button>
+      </div>
+      <!-- Facility class filter — chips populated from API -->
+      <div class="filter-group" id="facFilterGroup">
+        <span class="filter-label">Facility</span>
+        <button class="chip active" data-filter-class="all">All Types</button>
+      </div>
+    </div>
+    <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-strip" id="progressStrip">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <!-- Regions container -->
+  <div id="regionsContainer"></div>
+
+</div>
+
+<script>
+/* =====================================================================
+   LCSD Swimming Pools Dashboard
+   API: https://opendata.hlcheng.cf
+   ===================================================================== */
+
+const BASE        = "https://opendata.hlcheng.cf";
+const INDEX_URL   = BASE + "/swimming-pools-hk.json";
+const POOL_URL    = id => BASE + "/swimming-pools-hk/" + id + ".json";
+const CONCURRENCY = 8;
+
+// ── State ─────────────────────────────────────────────────
+let indexData       = null;
+let allPools        = [];
+let facilityClasses = [];
+let filterStatus    = "all";
+let filterClass     = "all";
+let loading         = false;
+
+// ── Current HKT time (UTC+8) ──────────────────────────────
+const _now      = new Date();
+const _hktMs    = _now.getTime() + (8 * 60 + _now.getTimezoneOffset()) * 60000;
+const hktNow    = new Date(_hktMs);
+
+const TODAY_DOW   = hktNow.getDay();
+const TODAY_MONTH = hktNow.getMonth() + 1;
+const TODAY_DAY   = hktNow.getDate();
+const TODAY_H     = hktNow.getHours() + hktNow.getMinutes() / 60;
+
+// ── Init ──────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () =>
+{
+  setupFilters();
+  loadAll();
+  document.getElementById("refreshBtn").addEventListener("click", () => loadAll());
+});
+
+// ── Filter wiring ─────────────────────────────────────────
+function setupFilters()
+{
+  document.querySelectorAll("[data-filter-status]").forEach(btn =>
+  {
+    btn.addEventListener("click", () =>
+    {
+      document.querySelectorAll("[data-filter-status]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filterStatus = btn.dataset.filterStatus;
+      render();
+    });
+  });
+}
+
+function buildClassFilters(classes)
+{
+  const grp = document.getElementById("facFilterGroup");
+  grp.querySelectorAll("[data-filter-class]:not([data-filter-class='all'])").forEach(b => b.remove());
+
+  classes.forEach(c =>
+  {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.dataset.filterClass = String(c.class);
+    btn.textContent = c.name_en;
+    btn.addEventListener("click", () =>
+    {
+      grp.querySelectorAll("[data-filter-class]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filterClass = String(c.class);
+      render();
+    });
+    grp.appendChild(btn);
+  });
+
+  grp.querySelector("[data-filter-class='all']").addEventListener("click", () =>
+  {
+    grp.querySelectorAll("[data-filter-class]").forEach(b => b.classList.remove("active"));
+    grp.querySelector("[data-filter-class='all']").classList.add("active");
+    filterClass = "all";
+    render();
+  });
+}
+
+// ── Load ──────────────────────────────────────────────────
+async function loadAll()
+{
+  if (loading) return;
+  loading = true;
+
+  const btn    = document.getElementById("refreshBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">↻</span> Loading';
+
+  allPools = [];
+  renderSkeletons(12);
+  showProgress(0, 1);
+
+  // 1. Fetch index
+  try
+  {
+    const res       = await fetch(INDEX_URL);
+    indexData       = await res.json();
+    facilityClasses = indexData.facility_class || [];
+    buildClassFilters(facilityClasses);
+  }
+  catch (e)
+  {
+    document.getElementById("regionsContainer").innerHTML =
+      `<div class="no-results">⚠ Could not load pool index. ${e.message}</div>`;
+    btn.disabled  = false;
+    btn.innerHTML = "↻ Refresh";
+    loading       = false;
+    return;
+  }
+
+  // Collect all IDs in region order
+  const allIds = (indexData.region || [])
+    .flatMap(r => r.district)
+    .flatMap(d => d.swpId_list);
+
+  const total = allIds.length;
+  let done    = 0;
+
+  // 2. Fetch each pool with concurrency
+  for (let i = 0; i < allIds.length; i += CONCURRENCY)
+  {
+    const chunk   = allIds.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map(id => fetchPool(id)));
+    results.forEach(r => { if (r.status === "fulfilled" && r.value) allPools.push(r.value); });
+    done += chunk.length;
+    showProgress(done, total);
+  }
+
+  hideProgress();
+  document.getElementById("summaryStrip").style.display = "flex";
+  document.getElementById("poolCountBadge").textContent = total + " pools";
+  updateSummary();
+  render();
+
+  btn.disabled  = false;
+  btn.innerHTML = "↻ Refresh";
+  loading       = false;
+}
+
+async function fetchPool(id)
+{
+  try
+  {
+    const res  = await fetch(POOL_URL(id));
+    if (!res.ok) return null;
+    const data = await res.json();
+    data._status   = computePoolStatus(data);
+    data._openFids = computeOpenFids(data);
+    return data;
+  }
+  catch (e) { return null; }
+}
+
+// ── Status computation ────────────────────────────────────
+
+function inDateRange(from, until)
+{
+  if (!from) return true;
+  const start = from.month  * 100 + from.day;
+  const end   = until.month * 100 + until.day;
+  const today = TODAY_MONTH * 100 + TODAY_DAY;
+  return start <= end
+    ? today >= start && today <= end
+    : today >= start || today <= end;
+}
+
+function toH(hhmm)
+{
+  const [h, m] = hhmm.split(":").map(Number);
+  return h + m / 60;
+}
+
+function computePoolStatus(pool)
+{
+  const nowIso = hktNow.toISOString().slice(0, 16);
+
+  // Whole-pool temporary closure
+  for (const tc of (pool.schedule.temporary_closures || []))
+  {
+    if (tc.facility_ids !== null) continue;
+    if (nowIso >= tc.start.slice(0, 16) && nowIso <= tc.end.slice(0, 16))
+      return { open: false, reason: "Temporary Closure" + (tc.reason_en ? ": " + tc.reason_en : "") };
+  }
+
+  // Whole-pool annual maintenance
+  for (const am of (pool.schedule.annual_maintenance || []))
+  {
+    if (am.facility_ids !== null) continue;
+    const start   = am.start_month * 100 + am.start_day;
+    const end     = am.end_month   * 100 + am.end_day;
+    const today   = TODAY_MONTH * 100 + TODAY_DAY;
+    const inMaint = start <= end
+      ? today >= start && today <= end
+      : today >= start || today <= end;
+    if (inMaint) return { open: false, reason: "Annual Maintenance" };
+  }
+
+  // Sessions for today
+  const sessions = (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(TODAY_DOW) && inDateRange(s.valid_from, s.valid_until)
+  );
+
+  if (sessions.length === 0) return { open: false, reason: "No session today" };
+
+  // Inside an open slot right now?
+  for (const sess of sessions)
+  {
+    for (const slot of (sess.slots || []))
+    {
+      if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
+        return { open: true, reason: "Session " + slot.session, slot };
+    }
+  }
+
+  // Next upcoming slot today
+  const upcoming = sessions
+    .flatMap(s => s.slots || [])
+    .filter(sl => toH(sl.open) > TODAY_H)
+    .sort((a, b) => toH(a.open) - toH(b.open));
+
+  if (upcoming.length > 0)
+    return { open: false, reason: "Opens at " + upcoming[0].open, nextTime: upcoming[0].open };
+
+  return { open: false, reason: "Closed for today" };
+}
+
+function computeOpenFids(pool)
+{
+  const allFids = (pool.facilities || []).map(f => f.fid);
+  const nowIso  = hktNow.toISOString().slice(0, 16);
+
+  const tcClosed = new Set();
+  for (const tc of (pool.schedule.temporary_closures || []))
+  {
+    if (nowIso >= tc.start.slice(0, 16) && nowIso <= tc.end.slice(0, 16))
+      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.add(f));
+  }
+
+  const amClosed = new Set();
+  for (const am of (pool.schedule.annual_maintenance || []))
+  {
+    const start   = am.start_month * 100 + am.start_day;
+    const end     = am.end_month   * 100 + am.end_day;
+    const today   = TODAY_MONTH * 100 + TODAY_DAY;
+    const inMaint = start <= end
+      ? today >= start && today <= end
+      : today >= start || today <= end;
+    if (inMaint)
+      (am.facility_ids === null ? allFids : am.facility_ids).forEach(f => amClosed.add(f));
+  }
+
+  let sessionOpen = undefined;
+  for (const sess of (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(TODAY_DOW) && inDateRange(s.valid_from, s.valid_until)
+  ))
+  {
+    for (const slot of (sess.slots || []))
+    {
+      if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
+      {
+        sessionOpen = sess.facility_ids === null ? null : new Set(sess.facility_ids);
+        break;
+      }
+    }
+    if (sessionOpen !== undefined) break;
+  }
+
+  return allFids.filter(fid =>
+  {
+    if (tcClosed.has(fid) || amClosed.has(fid)) return false;
+    if (sessionOpen === undefined) return false;
+    if (sessionOpen === null)      return true;
+    return sessionOpen.has(fid);
+  });
+}
+
+// ── Render ────────────────────────────────────────────────
+function render()
+{
+  const container = document.getElementById("regionsContainer");
+  container.innerHTML = "";
+  updateSummary();
+  if (!indexData) return;
+
+  for (const region of indexData.region)
+  {
+    const regionIds = region.district.flatMap(d => d.swpId_list);
+    let regionPools = allPools.filter(p => regionIds.includes(p.swpId));
+
+    if (filterStatus === "open")   regionPools = regionPools.filter(p => p._status.open);
+    if (filterStatus === "closed") regionPools = regionPools.filter(p => !p._status.open);
+
+    if (filterClass !== "all")
+    {
+      const cls = parseInt(filterClass);
+      regionPools = regionPools.filter(p =>
+        p.facilities && p.facilities.some(f => f.class === cls)
+      );
+    }
+
+    if (regionPools.length === 0) continue;
+
+    const block = document.createElement("div");
+    block.className = "region-block";
+
+    const label = document.createElement("p");
+    label.className = "section-label";
+    label.innerHTML =
+      `${esc(region.name_zh)} · ${esc(region.name_en)} ` +
+      `<span style="color:var(--muted);font-size:9px">(${regionPools.length})</span>`;
+    block.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "pool-grid";
+    regionPools.forEach((pool, idx) => grid.appendChild(buildPoolCard(pool, idx)));
+
+    block.appendChild(grid);
+    container.appendChild(block);
+  }
+
+  if (container.innerHTML === "")
+    container.innerHTML = `<div class="no-results">No pools match the current filter.</div>`;
+}
+
+function buildPoolCard(pool, idx)
+{
+  const card    = document.createElement("div");
+  card.className = "pool-card" + (pool._status.open ? "" : " closed");
+  card.style.animationDelay = Math.min(idx * 0.035, 0.4) + "s";
+
+  // Status badge
+  let badgeClass = "closed";
+  let badgeText  = pool._status.reason;
+  if (pool._status.open)
+  {
+    badgeClass = "open";
+    badgeText  = "● Open";
+  }
+  else if (pool._status.reason.includes("Maintenance"))
+  {
+    badgeClass = "maintenance";
+    badgeText  = "Maintenance";
+  }
+
+  // Session line
+  const sessionHtml = pool._status.open && pool._status.slot
+    ? `<div class="session-info">
+        <span class="session-dot open-now"></span>
+        <span>Session ${pool._status.slot.session}</span>
+        <span class="session-time">${esc(pool._status.slot.open)} – ${esc(pool._status.slot.close)}</span>
+       </div>`
+    : `<div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>${esc(pool._status.reason)}</span>
+       </div>`;
+
+  // Facilities
+  let facilities = pool.facilities || [];
+  if (filterClass !== "all")
+    facilities = facilities.filter(f => f.class === parseInt(filterClass));
+
+  const openFidSet = new Set(pool._openFids);
+
+  const facHtml = facilities.map(f =>
+  {
+    const isOpen = pool._status.open && openFidSet.has(f.fid);
+    const tags   = [];
+    if (f.indoor) tags.push(`<span class="fac-tag indoor">Indoor</span>`);
+    if (f.heated) tags.push(`<span class="fac-tag heated">Heated</span>`);
+    const dim = f.dimensions && f.dimensions.length
+      ? `<span class="fac-dim">${f.dimensions.length}m</span>` : "";
+
+    return `
+      <div class="facility-row${isOpen ? "" : " fac-unavail"}">
+        <span class="facility-dot ${isOpen ? "fac-open" : "fac-closed"}"></span>
+        <span class="facility-name">${esc(f.name_en)}</span>
+        ${dim}${tags.join("")}
+      </div>`;
+  }).join("");
+
+  card.innerHTML = `
+    <div class="card-head">
+      <div class="card-names">
+        <div class="name-zh">${esc(pool.name_zh)}</div>
+        <div class="name-en">${esc(pool.name_en)}</div>
+      </div>
+      <span class="status-badge ${badgeClass}">${esc(badgeText)}</span>
+    </div>
+    ${sessionHtml}
+    <div>
+      <div class="facilities-label">Facilities</div>
+      <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
+    </div>
+    <div class="card-address">📍 ${esc(pool.address_en || pool.address_zh || "")}</div>`;
+
+  return card;
+}
+
+// ── Summary ───────────────────────────────────────────────
+function updateSummary()
+{
+  const open   = allPools.filter(p => p._status && p._status.open).length;
+  const closed = allPools.filter(p => p._status && !p._status.open).length;
+  document.getElementById("statTotal").textContent  = allPools.length || "—";
+  document.getElementById("statOpen").textContent   = open   || "—";
+  document.getElementById("statClosed").textContent = closed || "—";
+}
+
+// ── Skeletons ─────────────────────────────────────────────
+function renderSkeletons(n)
+{
+  const container = document.getElementById("regionsContainer");
+  container.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "pool-grid";
+
+  for (let i = 0; i < n; i++)
+  {
+    grid.innerHTML += `
+      <div class="skel-card">
+        <div class="skel" style="height:18px;width:55%"></div>
+        <div class="skel" style="height:12px;width:35%;margin-top:4px"></div>
+        <div class="skel" style="height:12px;width:80%;margin-top:10px"></div>
+        <div class="skel" style="height:12px;width:70%"></div>
+        <div class="skel" style="height:12px;width:60%"></div>
+        <div class="skel" style="height:11px;width:90%;margin-top:10px"></div>
+      </div>`;
+  }
+  container.appendChild(grid);
+}
+
+// ── Progress ──────────────────────────────────────────────
+function showProgress(done, total)
+{
+  document.getElementById("progressStrip").classList.add("visible");
+  document.getElementById("progressFill").style.width =
+    Math.round((done / total) * 100) + "%";
+}
+
+function hideProgress()
+{
+  document.getElementById("progressStrip").classList.remove("visible");
+}
+
+// ── Utility ───────────────────────────────────────────────
+function esc(str)
+{
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+</script>
+
+</body>
+</html>
