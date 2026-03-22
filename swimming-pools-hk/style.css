@@ -99,7 +99,7 @@ body::after
 .back-link
 {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.688rem;
   color: var(--muted);
   text-decoration: none;
   letter-spacing: 0.06em;
@@ -123,7 +123,7 @@ body::after
 .hero-eyebrow
 {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.688rem;
   letter-spacing: 0.14em;
   color: var(--blue);
   text-transform: uppercase;
@@ -146,7 +146,7 @@ body::after
 .hero h1
 {
   font-family: var(--font-display);
-  font-size: clamp(32px, 5vw, 52px);
+  font-size: clamp(2rem, 5vw, 3.25rem);
   font-weight: 700;
   line-height: 1.1;
   color: var(--text);
@@ -163,7 +163,7 @@ body::after
 
 .hero-sub
 {
-  font-size: 14.5px;
+  font-size: 0.906rem;
   color: var(--text-sec);
   line-height: 1.7;
   max-width: 520px;
@@ -186,7 +186,7 @@ body::after
 .hero-badge
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.08em;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -224,7 +224,7 @@ body::after
 .stat-num
 {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 700;
   color: var(--text);
   line-height: 1;
@@ -236,7 +236,7 @@ body::after
 .stat-label
 {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 0.625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
@@ -276,7 +276,7 @@ body::after
 .filter-label
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.1em;
   color: var(--dim);
   text-transform: uppercase;
@@ -286,7 +286,7 @@ body::after
 .chip
 {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.656rem;
   padding: 5px 13px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -305,7 +305,7 @@ body::after
 .refresh-btn
 {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.688rem;
   letter-spacing: 0.06em;
   padding: 7px 16px;
   border: 1px solid var(--border);
@@ -349,7 +349,7 @@ body::after
 .section-label
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.14em;
   color: var(--dim);
   text-transform: uppercase;
@@ -434,7 +434,7 @@ body::after
 .name-zh
 {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 1.125rem;
   font-weight: 600;
   color: var(--text);
   line-height: 1.3;
@@ -442,7 +442,7 @@ body::after
 
 .name-en
 {
-  font-size: 11.5px;
+  font-size: 0.813rem;
   color: var(--muted);
   margin-top: 2px;
   line-height: 1.3;
@@ -455,22 +455,20 @@ body::after
 .card-badges
 {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
   flex-shrink: 0;
 }
 
 .status-badge
 {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   padding: 4px 9px;
   border-radius: 6px;
   white-space: nowrap;
   flex-shrink: 0;
   font-weight: 500;
+  text-transform: uppercase;
 }
 
 .status-badge.open
@@ -494,15 +492,17 @@ body::after
   border: 1px solid var(--amber-border);
 }
 
-/* Info tag — secondary badge for additional context (Last Admission, Maintenance, etc.) */
+/* Info tag — secondary badge below pool name for actionable context */
 .badge-info
 {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.688rem;
   letter-spacing: 0.08em;
   padding: 3px 8px;
   border-radius: 6px;
   white-space: nowrap;
+  display: inline-block;
+  margin-top: 5px;
   background: var(--amber-bg);
   color: var(--amber);
   border: 1px solid var(--amber-border);
@@ -512,7 +512,7 @@ body::after
 .session-info
 {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.75rem;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -541,7 +541,7 @@ body::after
 .facilities-label
 {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.625rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
@@ -560,7 +560,7 @@ body::after
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.813rem;
   line-height: 1.4;
 }
 
@@ -590,7 +590,7 @@ body::after
 .fac-tag
 {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.625rem;
   padding: 1px 6px;
   border-radius: 4px;
   letter-spacing: 0.04em;
@@ -603,7 +603,7 @@ body::after
 .fac-dim
 {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.625rem;
   color: var(--dim);
 }
 
@@ -625,7 +625,7 @@ body::after
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -634,7 +634,7 @@ body::after
 
 .tc-notice-bang
 {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -650,7 +650,7 @@ body::after
 .tc-notice-names
 {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.656rem;
   font-weight: 500;
   color: var(--text-sec);
   line-height: 1.4;
@@ -659,7 +659,7 @@ body::after
 .tc-notice-reason
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--muted);
   line-height: 1.4;
 }
@@ -667,7 +667,7 @@ body::after
 .tc-notice-until
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--dim);
   line-height: 1.4;
 }
@@ -675,7 +675,7 @@ body::after
 /* ── Address ─────────────────────────────────────────────── */
 .card-address
 {
-  font-size: 11.5px;
+  font-size: 0.75rem;
   color: var(--dim);
   line-height: 1.5;
   padding-top: 10px;
@@ -688,7 +688,7 @@ body::after
   grid-column: 1 / -1;
   padding: 40px 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: 0.813rem;
   color: var(--dim);
   font-family: var(--font-mono);
 }
