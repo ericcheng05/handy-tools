@@ -225,8 +225,10 @@ async function fetchPool(id)
     const res  = await fetch(POOL_URL(id));
     if (!res.ok) return null;
     const data = await res.json();
-    data._status   = computePoolStatus(data);
-    data._openFids = computeOpenFids(data);
+    data._status = computePoolStatus(data);
+    const { openFids, tcReasons } = computeOpenFids(data);
+    data._openFids  = openFids;
+    data._tcReasons = tcReasons;
     return data;
   }
   catch (e) { return null; }
@@ -327,11 +329,18 @@ function computeOpenFids(pool)
                + pad(hktNow.getHours())     + ":"
                + pad(hktNow.getMinutes());
 
-  const tcClosed = new Set();
+  // tcClosed maps fid → human-readable reason for facilities under a current temp closure
+  const tcClosed = new Map();
   for (const tc of (pool.schedule.temporary_closures || []))
   {
     if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
-      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.add(f));
+    {
+      const reason = tc.reason_en || "Temporary Closure";
+      const remark = tc.remark_en ? " — " + tc.remark_en : "";
+      const until  = " (until " + tc.end.slice(0, 16).replace("T", " ") + ")";
+      const label  = reason + remark + until;
+      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, label));
+    }
   }
 
   const amClosed = new Set();
@@ -363,13 +372,16 @@ function computeOpenFids(pool)
     if (sessionOpen !== undefined) break;
   }
 
-  return allFids.filter(fid =>
+  // Return both the open fid list and the tc reasons map so callers can annotate the UI
+  const openFids = allFids.filter(fid =>
   {
     if (tcClosed.has(fid) || amClosed.has(fid)) return false;
     if (sessionOpen === undefined) return false;
     if (sessionOpen === null)      return true;
     return sessionOpen.has(fid);
   });
+
+  return { openFids, tcReasons: tcClosed };
 }
 
 // ── Render ────────────────────────────────────────────────
@@ -457,22 +469,27 @@ function buildPoolCard(pool, idx)
   if (filterClass !== "all")
     facilities = facilities.filter(f => f.class === parseInt(filterClass));
 
-  const openFidSet = new Set(pool._openFids);
+  const openFidSet  = new Set(pool._openFids);
+  const tcReasons   = pool._tcReasons || new Map();
 
   const facHtml = facilities.map(f =>
   {
-    const isOpen = pool._status.open && openFidSet.has(f.fid);
-    const tags   = [];
+    const isOpen    = pool._status.open && openFidSet.has(f.fid);
+    const tcReason  = tcReasons.get(f.fid);
+    const tags      = [];
     if (f.indoor) tags.push(`<span class="fac-tag indoor">Indoor</span>`);
     if (f.heated) tags.push(`<span class="fac-tag heated">Heated</span>`);
     const dim = f.dimensions && f.dimensions.length
       ? `<span class="fac-dim">${f.dimensions.length}m</span>` : "";
 
+    const tcIcon = tcReason
+      ? `<span class="fac-tc-icon" title="${esc(tcReason)}">❗</span>` : "";
+
     return `
       <div class="facility-row${isOpen ? "" : " fac-unavail"}">
         <span class="facility-dot ${isOpen ? "fac-open" : "fac-closed"}"></span>
         <span class="facility-name">${esc(f.name_en)}</span>
-        ${dim}${tags.join("")}
+        ${tcIcon}${dim}${tags.join("")}
       </div>`;
   }).join("");
 

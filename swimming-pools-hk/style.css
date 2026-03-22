@@ -584,6 +584,15 @@ body::after
   color: var(--dim);
 }
 
+/* Temp-closure warning icon on a facility row */
+.fac-tc-icon
+{
+  font-size: 11px;
+  cursor: help;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
 /* ── Address ─────────────────────────────────────────────── */
 .card-address
 {
