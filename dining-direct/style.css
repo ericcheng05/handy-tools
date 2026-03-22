@@ -489,11 +489,6 @@ main {
 }
 .table-btn:hover::before { color: rgba(255,255,255,0.7); }
 
-.no-tables {
-  font-size: 13px; color: var(--muted); font-style: italic;
-  padding: 2px 0;
-}
-
 /* ── States ────────────────────────────────────────────── */
 .loading-state, .empty-state {
   grid-column: 1 / -1;

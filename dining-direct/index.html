@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dining Direct — HK Restaurant Ordering Links</title>
+  <title>QR Code Directory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Noto+Sans+HK:wght@400;500&display=swap" rel="stylesheet" />
@@ -12,9 +12,9 @@
 <body>
 
 <header>
-  <p class="header-label">Dining Direct</p>
-  <h1>Restaurant <span>Ordering Links</span></h1>
-  <p class="header-sub">Skip the QR scan — browse ordering links for HK restaurant chains, direct to your table</p>
+  <p class="header-label">QR Code Directory</p>
+  <h1>Restaurant <span>Link Hub</span></h1>
+  <p class="header-sub">Ordering system links collected from public QR codes</p>
 
   <div class="filter-bar">
 
@@ -355,7 +355,7 @@
 
   const LINK_META = {
     home:     { cls: 'home',     icon: '⊕', label: 'Home' },
-    dinein:   { cls: 'dinein',   icon: '🍽', label: 'Dine In' },
+    dineIn:   { cls: 'dinein',   icon: '🍽', label: 'Dine In' },
     takeaway: { cls: 'takeaway', icon: '📦', label: 'Takeaway' },
   };
 
@@ -387,11 +387,9 @@
     }).join('');
 
     const tableCount  = r.dinein_tables.length;
-    const tablesInner = tableCount
-      ? r.dinein_tables.map(t =>
-          `<a class="table-btn" href="${esc(t.url)}" target="_blank" rel="noopener" title="Dine In · Table ${t.id}">${t.id}</a>`
-        ).join('')
-      : `<span class="no-tables">No table links documented yet</span>`;
+    const tablesInner = r.dinein_tables.map(t =>
+      `<a class="table-btn" href="${esc(t.url)}" target="_blank" rel="noopener" title="Dine In · Table ${t.id}">${t.id}</a>`
+    ).join('');
 
     return `
       <div class="card-accent"></div>
@@ -402,6 +400,7 @@
         </div>
         <div class="card-title">${esc(r.nameEn)}${r.nameZh ? `<span class="card-title-zh">${esc(r.nameZh)}</span>` : ''}</div>
         ${linksHTML ? `<div class="links-row">${linksHTML}</div>` : ''}
+        ${tableCount ? `
         <div class="dinein-section">
           <div class="dinein-header">
             <div class="dinein-icon">
@@ -410,10 +409,10 @@
               </svg>
             </div>
             <span class="dinein-title">Dine-In Tables</span>
-            ${tableCount ? `<span class="dinein-count">${tableCount} tables</span>` : ''}
+            <span class="dinein-count">${tableCount} tables</span>
           </div>
           <div class="tables-grid">${tablesInner}</div>
-        </div>
+        </div>` : ''}
       </div>`;
   }
 
