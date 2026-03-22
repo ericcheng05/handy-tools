@@ -329,17 +329,15 @@ function computeOpenFids(pool)
                + pad(hktNow.getHours())     + ":"
                + pad(hktNow.getMinutes());
 
-  // tcClosed maps fid → human-readable reason for facilities under a current temp closure
+  // tcClosed maps fid → { reason, until } for facilities under a current temp closure
   const tcClosed = new Map();
   for (const tc of (pool.schedule.temporary_closures || []))
   {
     if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
     {
       const reason = tc.reason_en || "Temporary Closure";
-      const remark = tc.remark_en ? " — " + tc.remark_en : "";
-      const until  = " (until " + tc.end.slice(0, 16).replace("T", " ") + ")";
-      const label  = reason + remark + until;
-      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, label));
+      const until  = "Until " + tc.end.slice(0, 16).replace("T", " ");
+      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, { reason, until }));
     }
   }
 
@@ -489,34 +487,37 @@ function buildPoolCard(pool, idx)
       </div>`;
   }).join("");
 
-  // Group tc-affected facilities by reason so each distinct reason gets one notice line
-  // Map<reason → facility name[]>
+  // Group tc-affected facilities by reason+until so each distinct closure gets one entry
+  // Map<"reason|||until" → { reason, until, names[] }>
   const reasonGroups = new Map();
   for (const f of (pool.facilities || []))
   {
-    const reason = tcReasons.get(f.fid);
-    if (!reason) continue;
-    if (!reasonGroups.has(reason)) reasonGroups.set(reason, []);
-    reasonGroups.get(reason).push(f.name_en);
+    const entry = tcReasons.get(f.fid);
+    if (!entry) continue;
+    const key = entry.reason + "|||" + entry.until;
+    if (!reasonGroups.has(key)) reasonGroups.set(key, { reason: entry.reason, until: entry.until, names: [] });
+    reasonGroups.get(key).names.push(f.name_en);
   }
 
   let tcNoticeHtml = "";
   if (reasonGroups.size > 0)
   {
     const lines = [];
-    reasonGroups.forEach((names, reason) =>
+    reasonGroups.forEach(({ reason, until, names }) =>
     {
       lines.push(
         `<div class="tc-notice-row">` +
-        `<span class="tc-notice-icon">❗</span>` +
-        `<span class="tc-notice-text">` +
         `<span class="tc-notice-names">${esc(names.join(", "))}</span>` +
         `<span class="tc-notice-reason">${esc(reason)}</span>` +
-        `</span>` +
+        `<span class="tc-notice-until">${esc(until)}</span>` +
         `</div>`
       );
     });
-    tcNoticeHtml = `<div class="tc-notice-block">${lines.join("")}</div>`;
+    tcNoticeHtml =
+      `<div class="tc-notice-block">` +
+        `<div class="tc-notice-title"><span class="tc-notice-bang">❗</span>Temporary Closure</div>` +
+        lines.join("") +
+      `</div>`;
   }
 
   card.innerHTML = `

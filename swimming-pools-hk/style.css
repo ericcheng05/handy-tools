@@ -589,49 +589,63 @@ body::after
 {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 10px 12px;
   background: var(--amber-bg);
   border: 1px solid var(--amber-border);
   border-radius: 8px;
 }
 
+.tc-notice-title
+{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.tc-notice-bang
+{
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .tc-notice-row
 {
   display: flex;
-  align-items: flex-start;
-  gap: 7px;
-}
-
-.tc-notice-icon
-{
-  font-size: 11px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.tc-notice-text
-{
-  display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+  gap: 2px;
+  padding-left: 22px;   /* align under title text, past the bang */
 }
 
 .tc-notice-names
 {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 500;
-  color: var(--amber);
+  color: var(--text-sec);
   line-height: 1.4;
 }
 
 .tc-notice-reason
 {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--muted);
+  line-height: 1.4;
+}
+
+.tc-notice-until
+{
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim);
   line-height: 1.4;
 }
 
