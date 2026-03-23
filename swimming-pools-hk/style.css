@@ -512,7 +512,7 @@ body::after
 .session-info
 {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -535,6 +535,18 @@ body::after
 {
   color: var(--text-sec);
   font-weight: 500;
+}
+
+/* On closed cards the whole card is dimmed via opacity, so boost session-info
+   back to full contrast so the reason remains clearly readable */
+.pool-card.closed .session-info
+{
+  color: var(--text-sec);
+}
+
+.pool-card.closed .session-time
+{
+  color: var(--text);
 }
 
 /* ── Facilities ──────────────────────────────────────────── */
