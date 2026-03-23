@@ -28,6 +28,10 @@
   --gold-bg:     rgba(138,98,0,0.07);
   --gold-glow:   rgba(138,98,0,0.10);
 
+  --aqua:        #0e7490;
+  --aqua-bg:     rgba(14,116,144,0.07);
+  --aqua-glow:   rgba(14,116,144,0.12);
+
   --radius-card: 20px;
   --shadow-card: 0 2px 12px rgba(0,0,0,0.07), 0 0 0 1px var(--border);
   --shadow-hover: 0 12px 40px rgba(0,0,0,0.14), 0 0 0 1px var(--border-h);
@@ -256,7 +260,8 @@ body::after
 
 .app-card.green::before  { background: linear-gradient(90deg, var(--green), #4abe7c); }
 .app-card.accent::before { background: linear-gradient(90deg, var(--accent), #7b93f8); }
-.app-card.gold::before   { background: linear-gradient(90deg, var(--gold), #e4a830); }
+.app-card.gold::before   { background: linear-gradient(90deg, var(--gold),   #e4a830); }
+.app-card.aqua::before   { background: linear-gradient(90deg, var(--aqua),   #22d3ee); }
 
 .app-card:hover
 {
@@ -296,6 +301,7 @@ body::after
 .icon-green  { background: linear-gradient(135deg, #2db866 0%, #157a3c 100%); }
 .icon-accent { background: linear-gradient(135deg, #6a7ff5 0%, #2d4fd6 100%); }
 .icon-gold   { background: linear-gradient(135deg, #e4a830 0%, #8a6200 100%); }
+.icon-aqua   { background: linear-gradient(135deg, #22d3ee 0%, #0e7490 100%); }
 
 .icon-dim
 {
@@ -420,6 +426,14 @@ body::after
   transform: translate(2px, -2px);
 }
 
+.app-card.aqua.live:hover .card-arrow
+{
+  background: var(--aqua);
+  border-color: var(--aqua);
+  color: #fff;
+  transform: translate(2px, -2px);
+}
+
 /* ── Footer ──────────────────────────────────────────────── */
 .footer
 {
@@ -488,7 +502,6 @@ body::after
 /* ── Guides grid — scoped animation delays ───────────────── */
 .app-grid--guides .app-card:nth-child(1) { animation-delay: 0.54s; }
 .app-grid--guides .app-card:nth-child(2) { animation-delay: 0.62s; }
-.app-grid--guides .app-card:nth-child(3) { animation-delay: 0.70s; }
 
 /* ── Dashboard grid — scoped animation delays ────────────── */
 .app-grid--dashboard .app-card:nth-child(1) { animation-delay: 0.70s; }
