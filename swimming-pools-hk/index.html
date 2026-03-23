@@ -599,7 +599,12 @@ function buildPoolCard(pool, idx)
   card.innerHTML = `
     <div class="card-head">
       <div class="card-names">
-        <div class="name-zh">${esc(pool.name_zh)}</div>
+        <div class="name-zh">
+          ${esc(pool.name_zh)}
+          ${pool.url
+            ? `<a class="card-official-link" href="${esc(pool.url)}" target="_blank" rel="noopener" aria-label="Official LCSD page">↗</a>`
+            : ""}
+        </div>
         <div class="name-en">${esc(pool.name_en)}</div>
         ${infoTag}
       </div>
@@ -613,7 +618,12 @@ function buildPoolCard(pool, idx)
       <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
     </div>
     ${tcNoticeHtml}
-    <div class="card-address">📍 ${esc(pool.address_en || pool.address_zh || "")}</div>`;
+    ${pool.url_maps || (pool.coordinates && pool.coordinates.latitude)
+      ? `<a class="card-address card-address-link"
+            href="${esc(pool.url_maps || `https://www.google.com/maps/dir/?api=1&destination=${pool.coordinates.latitude},${pool.coordinates.longitude}`)}"
+            target="_blank" rel="noopener">📍 ${esc(pool.address_en || pool.address_zh || "")}</a>`
+      : `<div class="card-address">📍 ${esc(pool.address_en || pool.address_zh || "")}</div>`
+    }`;
 
   return card;
 }

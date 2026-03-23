@@ -694,6 +694,29 @@ body::after
   border-top: 1px solid var(--border);
 }
 
+.card-address-link
+{
+  display: block;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.card-address-link:hover { color: var(--blue); }
+
+/* Official LCSD page link — sits inline after the Chinese pool name */
+.card-official-link
+{
+  font-family: var(--font-mono);
+  font-size: 0.688rem;
+  color: var(--dim);
+  text-decoration: none;
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: color 0.2s;
+}
+
+.card-official-link:hover { color: var(--blue); }
+
 /* ── No-results ──────────────────────────────────────────── */
 .no-results
 {
