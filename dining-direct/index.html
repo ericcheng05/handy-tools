@@ -96,43 +96,59 @@
   let selectedLocations = new Set();
 
   /* ── Boot ────────────────────────────────────────────── */
-  async function boot() {
-    try {
+  async function boot()
+  {
+    try
+    {
       const manifest = await fetchJSON(MANIFEST);
       const chains   = await Promise.all(
         manifest.restaurants.map(r => fetchJSON(CHAIN_URL(r.slug)))
       );
-      // Names come exclusively from the manifest (Option B).
-      // Chain JSONs carry no name fields.
+
+      // Names come exclusively from the manifest.
       const metaBySlug = Object.fromEntries(
         manifest.restaurants.map(r => [r.slug, r])
       );
-      allData = chains.flatMap(chain => {
+
+      allData = chains.flatMap(chain =>
+      {
         const meta = metaBySlug[chain.slug] || {};
-        return chain.branches.map(b => ({
-          slug:   chain.slug,
-          nameEn: meta['name_en'] || chain.slug,
-          nameZh: meta['name_zh'] || '',
-          ...b
-        }));
+
+        // Only include branches that carry ordering data (system + links).
+        // Branches without these fields (e.g. store-ID-only entries) are
+        // silently skipped — the data layer stays neutral and the app
+        // decides what it can render.
+        return (chain.branches || [])
+          .filter(b => b.system && b.links)
+          .map(b => ({
+            slug:   chain.slug,
+            nameEn: meta['name_en'] || chain.slug,
+            nameZh: meta['name_zh'] || '',
+            ...b
+          }));
       });
+
       buildDropdowns();
       renderGrid();
-    } catch (e) {
+    }
+    catch (e)
+    {
       console.error(e);
       document.getElementById('grid').innerHTML =
         '<div class="empty-state">⚠ Could not load restaurant data.</div>';
     }
   }
 
-  async function fetchJSON(url) {
+  async function fetchJSON(url)
+  {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     return r.json();
   }
 
   /* ── Build dropdowns after data loads ───────────────── */
-  function buildDropdowns() {
+  function buildDropdowns()
+  {
     // Unique chains in manifest order
     const chainItems = [...new Map(allData.map(r => [r.slug, r.nameEn])).entries()]
       .map(([slug, name]) => ({
@@ -154,12 +170,14 @@
     wireDropdown('chain',    selectedChains);
     wireDropdown('location', selectedLocations);
 
-    document.getElementById('clear-chain').addEventListener('click', () => {
+    document.getElementById('clear-chain').addEventListener('click', () =>
+    {
       selectedChains.clear();
       refreshOptions('chain');
       updateFilters();
     });
-    document.getElementById('clear-location').addEventListener('click', () => {
+    document.getElementById('clear-location').addEventListener('click', () =>
+    {
       selectedLocations.clear();
       refreshOptions('location');
       updateFilters();
@@ -167,21 +185,25 @@
     document.getElementById('clear-all').addEventListener('click', clearAll);
 
     // Close panels when clicking outside
-    document.addEventListener('click', e => {
-      ['chain', 'location'].forEach(dim => {
+    document.addEventListener('click', e =>
+    {
+      ['chain', 'location'].forEach(dim =>
+      {
         if (!document.getElementById(`dd-${dim}`).contains(e.target)) closeDropdown(dim);
       });
     });
   }
 
-  function populateOptions(dim, items) {
+  function populateOptions(dim, items)
+  {
     const container = document.getElementById(`options-${dim}`);
     const selection = dim === 'chain' ? selectedChains : selectedLocations;
     container.innerHTML = items.map(item => optionHTML(dim, item, selection)).join('');
     updateHint(dim, items.length, items.length);
   }
 
-  function optionHTML(dim, item, selection) {
+  function optionHTML(dim, item, selection)
+  {
     const sel = selection.has(item.value);
     return `
       <div class="filter-option${sel ? ' selected' : ''}" data-value="${esc(item.value)}" data-dim="${dim}" role="option" aria-selected="${sel}">
@@ -195,51 +217,63 @@
       </div>`;
   }
 
-  function wireDropdown(dim, selection) {
+  function wireDropdown(dim, selection)
+  {
     const trigger   = document.getElementById(`trigger-${dim}`);
     const search    = document.getElementById(`search-${dim}`);
     const container = document.getElementById(`options-${dim}`);
     const dd        = document.getElementById(`dd-${dim}`);
 
-    trigger.addEventListener('click', e => {
+    trigger.addEventListener('click', e =>
+    {
       e.stopPropagation();
       const isOpen = dd.classList.contains('open');
       ['chain', 'location'].forEach(d => { if (d !== dim) closeDropdown(d); });
       isOpen ? closeDropdown(dim) : openDropdown(dim);
     });
 
-    search.addEventListener('input', () => {
+    search.addEventListener('input', () =>
+    {
       const q = search.value.trim().toLowerCase();
       const opts = container.querySelectorAll('.filter-option');
       let visible = 0;
-      opts.forEach(opt => {
+      opts.forEach(opt =>
+      {
         const match = !q || opt.querySelector('.filter-option-text').textContent.toLowerCase().includes(q);
         opt.style.display = match ? '' : 'none';
         if (match) visible++;
       });
       updateHint(dim, visible, opts.length);
       let noRes = container.querySelector('.filter-no-results');
-      if (visible === 0) {
-        if (!noRes) {
+      if (visible === 0)
+      {
+        if (!noRes)
+        {
           noRes = document.createElement('div');
           noRes.className = 'filter-no-results';
           noRes.textContent = 'No matches';
           container.appendChild(noRes);
         }
-      } else if (noRes) {
+      }
+      else if (noRes)
+      {
         noRes.remove();
       }
     });
 
-    container.addEventListener('click', e => {
+    container.addEventListener('click', e =>
+    {
       const opt = e.target.closest('.filter-option');
       if (!opt) return;
       const val = opt.dataset.value;
-      if (selection.has(val)) {
+      if (selection.has(val))
+      {
         selection.delete(val);
         opt.classList.remove('selected');
         opt.setAttribute('aria-selected', 'false');
-      } else {
+      }
+      else
+      {
         selection.add(val);
         opt.classList.add('selected');
         opt.setAttribute('aria-selected', 'true');
@@ -249,49 +283,57 @@
     });
   }
 
-  function openDropdown(dim) {
+  function openDropdown(dim)
+  {
     document.getElementById(`dd-${dim}`).classList.add('open');
     document.getElementById(`trigger-${dim}`).setAttribute('aria-expanded', 'true');
     setTimeout(() => document.getElementById(`search-${dim}`).focus(), 50);
   }
 
-  function closeDropdown(dim) {
+  function closeDropdown(dim)
+  {
     document.getElementById(`dd-${dim}`).classList.remove('open');
     document.getElementById(`trigger-${dim}`).setAttribute('aria-expanded', 'false');
     const search = document.getElementById(`search-${dim}`);
-    if (search.value) {
+    if (search.value)
+    {
       search.value = '';
       search.dispatchEvent(new Event('input'));
     }
   }
 
-  function updateTrigger(dim) {
+  function updateTrigger(dim)
+  {
     const selection = dim === 'chain' ? selectedChains : selectedLocations;
     const trigger   = document.getElementById(`trigger-${dim}`);
     const countEl   = document.getElementById(`${dim}-count`);
     const labelEl   = document.getElementById(`${dim}-label`);
     const n = selection.size;
 
-    if (n > 0) {
+    if (n > 0)
+    {
       trigger.classList.add('has-selection');
-      countEl.textContent  = n;
+      countEl.textContent   = n;
       countEl.style.display = '';
-      // Show first selected label in trigger, or "N selected"
       const firstOpt = [...document.querySelectorAll(`#options-${dim} .filter-option`)]
         .find(o => selection.has(o.dataset.value));
       labelEl.textContent = n === 1 && firstOpt
         ? firstOpt.querySelector('.filter-option-text').textContent
         : `${n} selected`;
-    } else {
+    }
+    else
+    {
       trigger.classList.remove('has-selection');
       countEl.style.display = 'none';
       labelEl.textContent = dim === 'chain' ? 'Chain' : 'Location';
     }
   }
 
-  function refreshOptions(dim) {
+  function refreshOptions(dim)
+  {
     const selection = dim === 'chain' ? selectedChains : selectedLocations;
-    document.querySelectorAll(`#options-${dim} .filter-option`).forEach(opt => {
+    document.querySelectorAll(`#options-${dim} .filter-option`).forEach(opt =>
+    {
       const sel = selection.has(opt.dataset.value);
       opt.classList.toggle('selected', sel);
       opt.setAttribute('aria-selected', String(sel));
@@ -299,13 +341,15 @@
     updateTrigger(dim);
   }
 
-  function updateHint(dim, visible, total) {
+  function updateHint(dim, visible, total)
+  {
     document.getElementById(`hint-${dim}`).textContent =
       visible < total ? `${visible} of ${total}` : `${total} total`;
   }
 
   /* ── Active chips strip ──────────────────────────────── */
-  function updateChipsStrip() {
+  function updateChipsStrip()
+  {
     const strip    = document.getElementById('active-strip');
     const clearBtn = document.getElementById('clear-all');
     const total    = selectedChains.size + selectedLocations.size;
@@ -315,7 +359,8 @@
 
     strip.querySelectorAll('.active-filter-chip').forEach(c => c.remove());
 
-    const addChip = (label, dim, value) => {
+    const addChip = (label, dim, value) =>
+    {
       const chip = document.createElement('span');
       chip.className = 'active-filter-chip';
       chip.innerHTML = `${esc(label)}
@@ -324,7 +369,8 @@
             <path d="M2 2l6 6M8 2l-6 6"/>
           </svg>
         </button>`;
-      chip.querySelector('.chip-remove').addEventListener('click', () => {
+      chip.querySelector('.chip-remove').addEventListener('click', () =>
+      {
         (dim === 'chain' ? selectedChains : selectedLocations).delete(value);
         refreshOptions(dim);
         updateFilters();
@@ -332,14 +378,16 @@
       strip.insertBefore(chip, clearBtn);
     };
 
-    selectedChains.forEach(slug => {
+    selectedChains.forEach(slug =>
+    {
       const name = allData.find(r => r.slug === slug)?.nameEn || slug;
       addChip(name, 'chain', slug);
     });
     selectedLocations.forEach(loc => addChip(loc, 'location', loc));
   }
 
-  function clearAll() {
+  function clearAll()
+  {
     selectedChains.clear();
     selectedLocations.clear();
     refreshOptions('chain');
@@ -348,7 +396,8 @@
   }
 
   /* ── Filter → render ─────────────────────────────────── */
-  function updateFilters() {
+  function updateFilters()
+  {
     updateChipsStrip();
     renderGrid();
   }
@@ -359,19 +408,22 @@
     takeaway: { cls: 'takeaway', icon: '📦', label: 'Takeaway' },
   };
 
-  function renderGrid() {
+  function renderGrid()
+  {
     const grid = document.getElementById('grid');
     let filtered = allData;
     if (selectedChains.size)    filtered = filtered.filter(r => selectedChains.has(r.slug));
     if (selectedLocations.size) filtered = filtered.filter(r => selectedLocations.has(r.branch));
 
-    if (!filtered.length) {
+    if (!filtered.length)
+    {
       grid.innerHTML = '<div class="empty-state">No restaurants match the selected filters.</div>';
       return;
     }
 
     grid.innerHTML = '';
-    filtered.forEach((r, i) => {
+    filtered.forEach((r, i) =>
+    {
       const card = document.createElement('div');
       card.className = 'card';
       card.style.animationDelay = `${i * 0.06}s`;
@@ -380,14 +432,16 @@
     });
   }
 
-  function cardHTML(r) {
-    const linksHTML = Object.entries(r.links).map(([k, url]) => {
+  function cardHTML(r)
+  {
+    const linksHTML = Object.entries(r.links).map(([k, url]) =>
+    {
       const m = LINK_META[k] || { cls: 'home', icon: '↗', label: k };
       return `<a class="link-btn ${m.cls}" href="${esc(url)}" target="_blank" rel="noopener">${m.icon} ${m.label}</a>`;
     }).join('');
 
-    const tableCount  = r.dinein_tables.length;
-    const tablesInner = r.dinein_tables.map(t =>
+    const tableCount  = (r.dinein_tables || []).length;
+    const tablesInner = (r.dinein_tables || []).map(t =>
       `<a class="table-btn" href="${esc(t.url)}" target="_blank" rel="noopener" title="Dine In · Table ${t.id}">${t.id}</a>`
     ).join('');
 
@@ -417,7 +471,8 @@
   }
 
   /* ── Util ────────────────────────────────────────────── */
-  function esc(str) {
+  function esc(str)
+  {
     return String(str)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');

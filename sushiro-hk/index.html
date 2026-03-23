@@ -57,22 +57,19 @@
     //   message: "Success",
     //   value: {
     //     storeId:                number,
-    //     name_en:                string,   // English store name
-    //     name_tc:                string,   // Chinese store name
-    //     region_tc:              string,   // Region (Chinese) — used for grouping
-    //     address_tc:             string,   // Address (Chinese)
+    //     name_en:                string,
+    //     name_tc:                string,
+    //     region_tc:              string,
+    //     address_tc:             string,
     //     store_status:           string,   // "營業中" | "閉店中"
-    //     store_ticketing_status: string,   // "派籌中" | "暫停派籌" (only when open)
+    //     store_ticketing_status: string,   // "派籌中" | "暫停派籌"
     //     waiting_count:          number,
     //     queue:                  string[]
     //   }
     // }
-    //
-    // Error responses: 400 / 404 / 422 with status: "Error"
-    // Non-existent store IDs return an error status → we skip them.
 
     const API_ENDPOINT    = "https://api.hlcheng.cf/dining/sushiro/getStoreStatus?storeId=";
-    const STORE_LIST_JSON = "stores.json";
+    const STORE_LIST_JSON = "https://opendata.hlcheng.cf/restaurants-hk/sushiro.json";
 
     const STATUS_OPEN            = "營業中";
     const TICKETING_ACTIVE_VALUE = "派籌中";
@@ -80,7 +77,7 @@
     const FETCH_CONCURRENCY = 10;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    let stores       = [];   // all resolved stores, sorted by storeId
+    let stores       = [];
     let activeFilter = "all";
     let scanning     = false;
 
@@ -119,13 +116,15 @@
         stores = [];
         renderSkeletons();
 
-        // Step 1: fetch the store ID list JSON
+        // Step 1: fetch the store list from opendata
         let ids = [];
         try
         {
-            const res      = await fetch(STORE_LIST_JSON);
-            const json     = await res.json();
-            ids            = json.storeid_list || [];
+            const res  = await fetch(STORE_LIST_JSON);
+            const json = await res.json();
+
+            // Extract IDs from branches array: [{ "id": 2 }, { "id": 3 }, ...]
+            ids = (json.branches || []).map(b => b.id).filter(Boolean);
 
             const listDate = json.updated || "";
             if (listDate)
@@ -136,7 +135,7 @@
         catch (err)
         {
             document.getElementById("regionsContainer").innerHTML =
-                `<div class="state-message">⚠ 無法載入店舖列表 (sushiro-stores.json)</div>`;
+                `<div class="state-message">⚠ 無法載入店舖列表</div>`;
             btn.disabled  = false;
             btn.innerHTML = "↻ Refresh";
             scanning      = false;
@@ -153,7 +152,7 @@
             return;
         }
 
-        // Step 2: fetch each store in the list
+        // Step 2: fetch each store with concurrency
         setProgress(0, ids.length);
         let completed = 0;
 
@@ -174,7 +173,6 @@
             setProgress(completed, ids.length);
         }
 
-        // Sort by storeId then do a full grouped render
         stores.sort((a, b) => a.storeId - b.storeId);
         renderRegions();
 
@@ -198,7 +196,6 @@
             const res  = await fetch(API_ENDPOINT + storeId);
             const json = await res.json();
 
-            // Any non-OK API status means store doesn't exist or upstream error → skip
             if (json.status !== "OK" || !json.value) return null;
 
             const v = json.value;
@@ -224,7 +221,6 @@
     }
 
     // ── Group stores by regionTc ──────────────────────────────────────────────
-    // Returns a Map of { regionName → store[] } preserving insertion order
     function groupByRegion(storeList)
     {
         const map = new Map();
@@ -263,7 +259,6 @@
             section.className = "region-section";
             section.style.animationDelay = (sectionIdx * 0.06) + "s";
 
-            // Region heading
             const heading = document.createElement("div");
             heading.className = "region-heading";
             heading.innerHTML = `
@@ -271,7 +266,6 @@
                 <span class="region-store-count">${regionStores.length} 間</span>`;
             section.appendChild(heading);
 
-            // Card grid for this region
             const grid     = document.createElement("div");
             grid.className = "card-grid";
 
@@ -297,7 +291,6 @@
 
         const badgeClass = store.isOpen ? "open" : "closed";
 
-        // Ticketing row — only shown when store is open
         let ticketingRow = "";
         if (store.isOpen)
         {
@@ -309,7 +302,6 @@
                 </div>`;
         }
 
-        // Queue chips — only shown when store is open
         let queueRow = "";
         if (store.isOpen)
         {
@@ -332,7 +324,6 @@
                 </div>`;
         }
 
-        // Address strip — only shown if present
         const addressStrip = store.addressTc
             ? `<div class="card-address">📍 ${esc(store.addressTc)}</div>`
             : "";
@@ -365,7 +356,6 @@
         const container     = document.getElementById("regionsContainer");
         container.innerHTML = "";
 
-        // Show three skeleton region sections
         for (let s = 0; s < 3; s++)
         {
             const section = document.createElement("section");
