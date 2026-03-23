@@ -685,13 +685,26 @@ body::after
 }
 
 /* ── Address ─────────────────────────────────────────────── */
+.card-phone
+{
+  display: block;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--dim);
+  text-decoration: none;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  transition: color 0.2s;
+}
+
+.card-phone:hover { color: var(--blue); }
+
 .card-address
 {
   font-size: 0.75rem;
   color: var(--dim);
   line-height: 1.5;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding-top: 6px;
 }
 
 .card-address-link

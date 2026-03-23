@@ -309,8 +309,13 @@ function computePoolStatus(pool)
       .flatMap(s => s.slots || [])
       .find(sl => sl.session === 2);
 
+    // Pool reopens at the open time of session 3, not the close of session 2
+    const slot3 = sessions
+      .flatMap(s => s.slots || [])
+      .find(sl => sl.session === 3);
+
     if (slot2 && TODAY_H >= CLEANSING_START && TODAY_H < toH(slot2.close))
-      return { open: false, tag: "Weekly Cleansing", cleansingUntil: slot2.close };
+      return { open: false, tag: "Weekly Cleansing", cleansingUntil: slot3 ? slot3.open : null };
   }
 
   // All slots for today, sorted by open time — used for session break and end-of-day checks
@@ -618,6 +623,9 @@ function buildPoolCard(pool, idx)
       <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
     </div>
     ${tcNoticeHtml}
+    ${pool.telephone
+      ? `<a class="card-phone" href="tel:+852${esc(pool.telephone)}">📞 ${esc(pool.telephone)}</a>`
+      : ""}
     ${pool.url_maps || (pool.coordinates && pool.coordinates.latitude)
       ? `<a class="card-address card-address-link"
             href="${esc(pool.url_maps || `https://www.google.com/maps/dir/?api=1&destination=${pool.coordinates.latitude},${pool.coordinates.longitude}`)}"
