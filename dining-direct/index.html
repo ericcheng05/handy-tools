@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Code Directory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Noto+Sans+HK:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<header>
+  <p class="header-label">QR Code Directory</p>
+  <h1>Restaurant <span>Link Hub</span></h1>
+  <p class="header-sub">Ordering system links collected from public QR codes</p>
+
+  <div class="filter-bar">
+
+    <!-- Chain dropdown -->
+    <div class="filter-dropdown" id="dd-chain">
+      <button class="filter-trigger" id="trigger-chain" aria-haspopup="listbox" aria-expanded="false">
+        <svg class="filter-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M9 3v18M3 9h6M3 15h6"/>
+        </svg>
+        <span class="filter-trigger-label" id="chain-label">Chain</span>
+        <span class="filter-trigger-count" id="chain-count" style="display:none"></span>
+        <svg class="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+      <div class="filter-panel" role="listbox" aria-multiselectable="true" id="panel-chain">
+        <div class="filter-search-wrap">
+          <input class="filter-search" type="search" placeholder="Search chains…" id="search-chain" autocomplete="off" />
+        </div>
+        <div class="filter-options" id="options-chain"></div>
+        <div class="filter-panel-footer">
+          <button class="filter-clear-btn" id="clear-chain">Clear</button>
+          <span class="filter-results-hint" id="hint-chain"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Location dropdown -->
+    <div class="filter-dropdown" id="dd-location">
+      <button class="filter-trigger" id="trigger-location" aria-haspopup="listbox" aria-expanded="false">
+        <svg class="filter-trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+        <span class="filter-trigger-label" id="location-label">Location</span>
+        <span class="filter-trigger-count" id="location-count" style="display:none"></span>
+        <svg class="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+      <div class="filter-panel" role="listbox" aria-multiselectable="true" id="panel-location">
+        <div class="filter-search-wrap">
+          <input class="filter-search" type="search" placeholder="Search locations…" id="search-location" autocomplete="off" />
+        </div>
+        <div class="filter-options" id="options-location"></div>
+        <div class="filter-panel-footer">
+          <button class="filter-clear-btn" id="clear-location">Clear</button>
+          <span class="filter-results-hint" id="hint-location"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Active filter chips — shown only when filters are active -->
+  <div class="active-filters-strip" id="active-strip">
+    <!-- chips injected by JS -->
+    <button class="clear-all-btn" id="clear-all">Clear all</button>
+  </div>
+</header>
+
+<main id="grid">
+  <div class="loading-state">
+    <div class="spinner"></div>
+    Loading restaurants…
+  </div>
+</main>
+
+<script>
+  /* ── Config ──────────────────────────────────────────── */
+  const BASE      = 'https://opendata.myexample.work';
+  const MANIFEST  = `${BASE}/restaurants-hk.json`;
+  const CHAIN_URL = slug => `${BASE}/restaurants-hk/${slug}.json`;
+
+  /* ── State ───────────────────────────────────────────── */
+  let allData           = [];
+  let selectedChains    = new Set();
+  let selectedLocations = new Set();
+
+  /* ── Boot ────────────────────────────────────────────── */
+  async function boot()
+  {
+    try
+    {
+      const manifest = await fetchJSON(MANIFEST);
+      const chains   = await Promise.all(
+        manifest.restaurants.map(r => fetchJSON(CHAIN_URL(r.slug)))
+      );
+
+      // Names come exclusively from the manifest.
+      const metaBySlug = Object.fromEntries(
+        manifest.restaurants.map(r => [r.slug, r])
+      );
+
+      allData = chains.flatMap(chain =>
+      {
+        const meta = metaBySlug[chain.slug] || {};
+
+        // Only include branches that carry ordering data (system + links).
+        // Branches without these fields (e.g. store-ID-only entries) are
+        // silently skipped — the data layer stays neutral and the app
+        // decides what it can render.
+        return (chain.branches || [])
+          .filter(b => b.system && b.links)
+          .map(b => ({
+            slug:   chain.slug,
+            nameEn: meta['name_en'] || chain.slug,
+            nameZh: meta['name_zh'] || '',
+            ...b
+          }));
+      });
+
+      buildDropdowns();
+      renderGrid();
+    }
+    catch (e)
+    {
+      console.error(e);
+      document.getElementById('grid').innerHTML =
+        '<div class="empty-state">⚠ Could not load restaurant data.</div>';
+    }
+  }
+
+  async function fetchJSON(url)
+  {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    return r.json();
+  }
+
+  /* ── Build dropdowns after data loads ───────────────── */
+  function buildDropdowns()
+  {
+    // Unique chains in manifest order
+    const chainItems = [...new Map(allData.map(r => [r.slug, r.nameEn])).entries()]
+      .map(([slug, name]) => ({
+        value: slug,
+        label: name,
+        count: allData.filter(r => r.slug === slug).length
+      }));
+
+    // Unique locations sorted alphabetically with branch counts
+    const locCounts = {};
+    allData.forEach(r => { locCounts[r.branch] = (locCounts[r.branch] || 0) + 1; });
+    const locationItems = Object.entries(locCounts)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([loc, count]) => ({ value: loc, label: loc, count }));
+
+    populateOptions('chain',    chainItems);
+    populateOptions('location', locationItems);
+
+    wireDropdown('chain',    selectedChains);
+    wireDropdown('location', selectedLocations);
+
+    document.getElementById('clear-chain').addEventListener('click', () =>
+    {
+      selectedChains.clear();
+      refreshOptions('chain');
+      updateFilters();
+    });
+    document.getElementById('clear-location').addEventListener('click', () =>
+    {
+      selectedLocations.clear();
+      refreshOptions('location');
+      updateFilters();
+    });
+    document.getElementById('clear-all').addEventListener('click', clearAll);
+
+    // Close panels when clicking outside
+    document.addEventListener('click', e =>
+    {
+      ['chain', 'location'].forEach(dim =>
+      {
+        if (!document.getElementById(`dd-${dim}`).contains(e.target)) closeDropdown(dim);
+      });
+    });
+  }
+
+  function populateOptions(dim, items)
+  {
+    const container = document.getElementById(`options-${dim}`);
+    const selection = dim === 'chain' ? selectedChains : selectedLocations;
+    container.innerHTML = items.map(item => optionHTML(dim, item, selection)).join('');
+    updateHint(dim, items.length, items.length);
+  }
+
+  function optionHTML(dim, item, selection)
+  {
+    const sel = selection.has(item.value);
+    return `
+      <div class="filter-option${sel ? ' selected' : ''}" data-value="${esc(item.value)}" data-dim="${dim}" role="option" aria-selected="${sel}">
+        <span class="filter-option-check">
+          <svg class="filter-option-check-mark" viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.5 5l2.5 2.5 4.5-4.5"/>
+          </svg>
+        </span>
+        <span class="filter-option-text">${esc(item.label)}</span>
+        <span class="filter-option-badge">${item.count}</span>
+      </div>`;
+  }
+
+  function wireDropdown(dim, selection)
+  {
+    const trigger   = document.getElementById(`trigger-${dim}`);
+    const search    = document.getElementById(`search-${dim}`);
+    const container = document.getElementById(`options-${dim}`);
+    const dd        = document.getElementById(`dd-${dim}`);
+
+    trigger.addEventListener('click', e =>
+    {
+      e.stopPropagation();
+      const isOpen = dd.classList.contains('open');
+      ['chain', 'location'].forEach(d => { if (d !== dim) closeDropdown(d); });
+      isOpen ? closeDropdown(dim) : openDropdown(dim);
+    });
+
+    search.addEventListener('input', () =>
+    {
+      const q = search.value.trim().toLowerCase();
+      const opts = container.querySelectorAll('.filter-option');
+      let visible = 0;
+      opts.forEach(opt =>
+      {
+        const match = !q || opt.querySelector('.filter-option-text').textContent.toLowerCase().includes(q);
+        opt.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      updateHint(dim, visible, opts.length);
+      let noRes = container.querySelector('.filter-no-results');
+      if (visible === 0)
+      {
+        if (!noRes)
+        {
+          noRes = document.createElement('div');
+          noRes.className = 'filter-no-results';
+          noRes.textContent = 'No matches';
+          container.appendChild(noRes);
+        }
+      }
+      else if (noRes)
+      {
+        noRes.remove();
+      }
+    });
+
+    container.addEventListener('click', e =>
+    {
+      const opt = e.target.closest('.filter-option');
+      if (!opt) return;
+      const val = opt.dataset.value;
+      if (selection.has(val))
+      {
+        selection.delete(val);
+        opt.classList.remove('selected');
+        opt.setAttribute('aria-selected', 'false');
+      }
+      else
+      {
+        selection.add(val);
+        opt.classList.add('selected');
+        opt.setAttribute('aria-selected', 'true');
+      }
+      updateTrigger(dim);
+      updateFilters();
+    });
+  }
+
+  function openDropdown(dim)
+  {
+    document.getElementById(`dd-${dim}`).classList.add('open');
+    document.getElementById(`trigger-${dim}`).setAttribute('aria-expanded', 'true');
+    setTimeout(() => document.getElementById(`search-${dim}`).focus(), 50);
+  }
+
+  function closeDropdown(dim)
+  {
+    document.getElementById(`dd-${dim}`).classList.remove('open');
+    document.getElementById(`trigger-${dim}`).setAttribute('aria-expanded', 'false');
+    const search = document.getElementById(`search-${dim}`);
+    if (search.value)
+    {
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+    }
+  }
+
+  function updateTrigger(dim)
+  {
+    const selection = dim === 'chain' ? selectedChains : selectedLocations;
+    const trigger   = document.getElementById(`trigger-${dim}`);
+    const countEl   = document.getElementById(`${dim}-count`);
+    const labelEl   = document.getElementById(`${dim}-label`);
+    const n = selection.size;
+
+    if (n > 0)
+    {
+      trigger.classList.add('has-selection');
+      countEl.textContent   = n;
+      countEl.style.display = '';
+      const firstOpt = [...document.querySelectorAll(`#options-${dim} .filter-option`)]
+        .find(o => selection.has(o.dataset.value));
+      labelEl.textContent = n === 1 && firstOpt
+        ? firstOpt.querySelector('.filter-option-text').textContent
+        : `${n} selected`;
+    }
+    else
+    {
+      trigger.classList.remove('has-selection');
+      countEl.style.display = 'none';
+      labelEl.textContent = dim === 'chain' ? 'Chain' : 'Location';
+    }
+  }
+
+  function refreshOptions(dim)
+  {
+    const selection = dim === 'chain' ? selectedChains : selectedLocations;
+    document.querySelectorAll(`#options-${dim} .filter-option`).forEach(opt =>
+    {
+      const sel = selection.has(opt.dataset.value);
+      opt.classList.toggle('selected', sel);
+      opt.setAttribute('aria-selected', String(sel));
+    });
+    updateTrigger(dim);
+  }
+
+  function updateHint(dim, visible, total)
+  {
+    document.getElementById(`hint-${dim}`).textContent =
+      visible < total ? `${visible} of ${total}` : `${total} total`;
+  }
+
+  /* ── Active chips strip ──────────────────────────────── */
+  function updateChipsStrip()
+  {
+    const strip    = document.getElementById('active-strip');
+    const clearBtn = document.getElementById('clear-all');
+    const total    = selectedChains.size + selectedLocations.size;
+
+    strip.classList.toggle('visible', total > 0);
+    if (!total) return;
+
+    strip.querySelectorAll('.active-filter-chip').forEach(c => c.remove());
+
+    const addChip = (label, dim, value) =>
+    {
+      const chip = document.createElement('span');
+      chip.className = 'active-filter-chip';
+      chip.innerHTML = `${esc(label)}
+        <button class="chip-remove" aria-label="Remove ${esc(label)}">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M2 2l6 6M8 2l-6 6"/>
+          </svg>
+        </button>`;
+      chip.querySelector('.chip-remove').addEventListener('click', () =>
+      {
+        (dim === 'chain' ? selectedChains : selectedLocations).delete(value);
+        refreshOptions(dim);
+        updateFilters();
+      });
+      strip.insertBefore(chip, clearBtn);
+    };
+
+    selectedChains.forEach(slug =>
+    {
+      const name = allData.find(r => r.slug === slug)?.nameEn || slug;
+      addChip(name, 'chain', slug);
+    });
+    selectedLocations.forEach(loc => addChip(loc, 'location', loc));
+  }
+
+  function clearAll()
+  {
+    selectedChains.clear();
+    selectedLocations.clear();
+    refreshOptions('chain');
+    refreshOptions('location');
+    updateFilters();
+  }
+
+  /* ── Filter → render ─────────────────────────────────── */
+  function updateFilters()
+  {
+    updateChipsStrip();
+    renderGrid();
+  }
+
+  const LINK_META = {
+    home:     { cls: 'home',     icon: '⊕', label: 'Home' },
+    dinein:   { cls: 'dinein',   icon: '🍽', label: 'Dine In' },
+    takeaway: { cls: 'takeaway', icon: '📦', label: 'Takeaway' },
+  };
+
+  function renderGrid()
+  {
+    const grid = document.getElementById('grid');
+    let filtered = allData;
+    if (selectedChains.size)    filtered = filtered.filter(r => selectedChains.has(r.slug));
+    if (selectedLocations.size) filtered = filtered.filter(r => selectedLocations.has(r.branch));
+
+    if (!filtered.length)
+    {
+      grid.innerHTML = '<div class="empty-state">No restaurants match the selected filters.</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+    filtered.forEach((r, i) =>
+    {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.animationDelay = `${i * 0.06}s`;
+      card.innerHTML = cardHTML(r);
+      grid.appendChild(card);
+    });
+  }
+
+  function cardHTML(r)
+  {
+    const linksHTML = Object.entries(r.links).map(([k, url]) =>
+    {
+      const m = LINK_META[k] || { cls: 'home', icon: '↗', label: k };
+      return `<a class="link-btn ${m.cls}" href="${esc(url)}" target="_blank" rel="noopener">${m.icon} ${m.label}</a>`;
+    }).join('');
+
+    const tableCount  = (r.dinein_tables || []).length;
+    const tablesInner = (r.dinein_tables || []).map(t =>
+      `<a class="table-btn" href="${esc(t.url)}" target="_blank" rel="noopener" title="Dine In · Table ${t.id}">${t.id}</a>`
+    ).join('');
+
+    return `
+      <div class="card-accent"></div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="branch-tag">${esc(r.branch)}</span>
+          <a class="system-link" href="${esc(r.system_url)}" target="_blank" rel="noopener">↗ ${esc(r.system)}</a>
+        </div>
+        <div class="card-title">${esc(r.nameEn)}${r.nameZh ? `<span class="card-title-zh">${esc(r.nameZh)}</span>` : ''}</div>
+        ${linksHTML ? `<div class="links-row">${linksHTML}</div>` : ''}
+        ${tableCount ? `
+        <div class="dinein-section">
+          <div class="dinein-header">
+            <div class="dinein-icon">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 3h2v7a4 4 0 0 0 3.5 3.97V21h3v-7.03A4 4 0 0 0 15 10V3h2v7a6 6 0 0 1-5 5.92V21h-5v-5.08A6 6 0 0 1 3 10V3z"/>
+              </svg>
+            </div>
+            <span class="dinein-title">Dine-In Tables</span>
+            <span class="dinein-count">${tableCount} tables</span>
+          </div>
+          <div class="tables-grid">${tablesInner}</div>
+        </div>` : ''}
+      </div>`;
+  }
+
+  /* ── Util ────────────────────────────────────────────── */
+  function esc(str)
+  {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  boot();
+</script>
+
+</body>
+</html>

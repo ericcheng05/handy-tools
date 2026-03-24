@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LINE Chat Converter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="lc-converter">
+
+  <!-- ── Converter Card ── -->
+  <div class="lc-converter-card">
+    <h2><span class="icon">💬</span> LINE Chat Converter</h2>
+    <p>Upload a <code>.txt</code> file exported from LINE. The chat will be rendered as a styled HTML page you can save or share.</p>
+
+    <!-- Drop zone -->
+    <label class="lc-dropzone" id="dropzone">
+      <span class="dz-icon">📂</span>
+      <span class="dz-label" id="dz-label">Drop your .txt file here</span>
+      <span class="dz-sub">or click to browse</span>
+      <input type="file" id="file-input" accept=".txt">
+    </label>
+
+    <!-- "My name" picker — populated after file is loaded -->
+    <div class="lc-field" id="name-field" style="display:none">
+      <label>Which one is you? <span class="lc-field-hint">(your messages will appear on the right)</span></label>
+      <div class="lc-name-picker" id="name-picker"></div>
+    </div>
+
+    <button class="lc-btn" id="convert-btn" disabled>
+      ✨ Convert to HTML
+    </button>
+
+    <div class="lc-status" id="status"></div>
+  </div>
+
+  <!-- ── Preview Panel ── -->
+  <div class="lc-preview-panel" id="preview-panel">
+    <div class="lc-preview-toolbar">
+      <span id="preview-label">Preview</span>
+      <div style="display:flex;gap:8px">
+        <button class="lc-btn-sm" id="download-css-btn">⬇ Download CSS</button>
+        <button class="lc-btn-sm" id="download-btn">⬇ Download HTML</button>
+      </div>
+    </div>
+    <iframe class="lc-preview-frame" id="preview-frame" sandbox="allow-same-origin"></iframe>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   LINE Chat Export Parser & HTML Generator
+   ============================================================
+
+   LINE export format (Android / iOS):
+   ─────────────────────────────────────
+   Header lines:
+     [LINE] <group name>
+     儲存日期： DD/MM/YYYY HH:MM
+
+   Date line:
+     DD/MM/YYYY（weekday）   or   YYYY.MM.DD weekday
+
+   Message line (tab-separated):
+     HH:MM\t<sender>\t<message>
+
+   System line (no sender column):
+     HH:MM\t<system text>
+
+   Media:
+     message == "[貼圖]" | "[照片]" | "[影片]" | "[檔案]" | "[聯絡人]" | "[位置資訊]"
+   ============================================================ */
+
+// ── Utility ────────────────────────────────────────────────
+
+/** Escape HTML special characters */
+function esc(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Convert bare URLs in text to clickable links */
+function linkify(text) {
+  const urlRe = /https?:\/\/[^\s<>"]+/g;
+  return esc(text).replace(urlRe, url =>
+    `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
+  );
+}
+
+/** Detect LINE media placeholders */
+const MEDIA_MAP = {
+  '[貼圖]':    { icon: '🖼',  label: '貼圖 Sticker' },
+  '[照片]':    { icon: '📷',  label: '照片 Photo' },
+  '[影片]':    { icon: '🎬',  label: '影片 Video' },
+  '[檔案]':    { icon: '📎',  label: '檔案 File' },
+  '[聯絡人]':  { icon: '👤',  label: '聯絡人 Contact' },
+  '[位置資訊]':{ icon: '📍',  label: '位置 Location' },
+  '[Sticker]': { icon: '🖼',  label: 'Sticker' },
+  '[Photo]':   { icon: '📷',  label: 'Photo' },
+  '[Video]':   { icon: '🎬',  label: 'Video' },
+  '[File]':    { icon: '📎',  label: 'File' },
+};
+
+function isMedia(text) {
+  return Object.prototype.hasOwnProperty.call(MEDIA_MAP, text.trim());
+}
+
+/** Assign a stable colour index to each unique sender name */
+function makeColourMap(senders) {
+  const map = {};
+  let i = 0;
+  for (const s of senders) {
+    if (!(s in map)) map[s] = i++ % 8;
+  }
+  return map;
+}
+
+/** Initial letter(s) for avatar */
+function initials(name) {
+  // Take first char; if ASCII letter, also grab second
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  // CJK or other wide char → single char
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0];
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+/** Parse the weekday hint out of a date line */
+const WEEKDAY_ZH = ['日','一','二','三','四','五','六'];
+function formatDateLabel(raw) {
+  // try DD/MM/YYYY（X） format
+  const m1 = raw.match(/(\d{2})\/(\d{2})\/(\d{4})（(.)）/);
+  if (m1) {
+    const [,d,mo,y,wd] = m1;
+    const wIdx = WEEKDAY_ZH.indexOf(wd);
+    const wStr = wIdx >= 0 ? ['日','一','二','三','四','五','六'][wIdx] : wd;
+    return `${y}年${parseInt(mo)}月${parseInt(d)}日（${wStr}）`;
+  }
+  // try YYYY.MM.DD weekday format (some exports)
+  const m2 = raw.match(/(\d{4})\.(\d{2})\.(\d{2})\s*(.*)/);
+  if (m2) {
+    const [,y,mo,d,rest] = m2;
+    return `${y}年${parseInt(mo)}月${parseInt(d)}日${rest ? ' ' + rest : ''}`;
+  }
+  return raw.trim();
+}
+
+// ── Parser ─────────────────────────────────────────────────
+
+/**
+ * Parse LINE .txt export into a structured array.
+ * Returns { title, saveDate, messages }
+ *
+ * messages: Array of objects, one of:
+ *   { type:'date',   raw }
+ *   { type:'system', time, text }
+ *   { type:'msg',    time, sender, text }
+ */
+function parseLineTxt(raw) {
+  const lines = raw.split(/\r?\n/);
+  let title = '';
+  let saveDate = '';
+  const messages = [];
+
+  // LINE exports occasionally wrap long messages across multiple lines.
+  // We buffer them and flush when we hit a new timestamped line.
+  let pending = null;
+
+  function flushPending() {
+    if (pending) {
+      messages.push(pending);
+      pending = null;
+    }
+  }
+
+  // Regex for a timestamped line: starts with HH:MM\t
+  const tsMsgRe  = /^(\d{1,2}:\d{2})\t(.+?)\t([\s\S]*)$/;  // time TAB sender TAB message
+  const tsSysRe  = /^(\d{1,2}:\d{2})\t(.+)$/;               // time TAB system text (no second tab)
+  // Date line patterns
+  const dateLine1 = /^\d{2}\/\d{2}\/\d{4}（.）$/;
+  const dateLine2 = /^\d{4}\.\d{2}\.\d{2}/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // ── Header ──
+    if (i === 0 && line.startsWith('[LINE]')) {
+      title = line.replace('[LINE]', '').trim();
+      continue;
+    }
+    if (i <= 2 && line.startsWith('儲存日期')) {
+      saveDate = line.replace(/^儲存日期[：:]\s*/, '').trim();
+      continue;
+    }
+
+    // ── Date separator ──
+    if (dateLine1.test(line.trim()) || dateLine2.test(line.trim())) {
+      flushPending();
+      messages.push({ type: 'date', raw: line.trim() });
+      continue;
+    }
+
+    // ── Timestamped message line ──
+    const mMsg = line.match(tsMsgRe);
+    if (mMsg) {
+      flushPending();
+      pending = { type: 'msg', time: mMsg[1], sender: mMsg[2], text: mMsg[3] };
+      continue;
+    }
+
+    // ── Timestamped system line ──
+    const mSys = line.match(tsSysRe);
+    if (mSys) {
+      flushPending();
+      // Heuristic: system messages usually contain words like "已加入", "已退出", "已邀請"
+      messages.push({ type: 'system', time: mSys[1], text: mSys[2] });
+      continue;
+    }
+
+    // ── Continuation line (wrapped message) ──
+    if (pending && line !== '') {
+      pending.text += '\n' + line;
+      continue;
+    }
+
+    // ── Blank / unknown — flush ──
+    flushPending();
+  }
+
+  flushPending();
+
+  return { title, saveDate, messages };
+}
+
+// ── HTML Generator ─────────────────────────────────────────
+
+/**
+ * Build a complete standalone HTML document from parsed data.
+ * @param {object} parsed   - result of parseLineTxt()
+ * @param {string} myName   - current user's display name (right-side bubbles)
+ * @param {string} cssPath  - relative path to external CSS
+ */
+function buildHtml(parsed, myName, cssPath = 'line.css') {
+  const { title, saveDate, messages } = parsed;
+
+  // Collect unique senders for colour assignment and member pills
+  const senderSet = new Set();
+  for (const m of messages) {
+    if (m.type === 'msg') senderSet.add(m.sender);
+  }
+  const colourMap = makeColourMap([...senderSet]);
+
+  // Build member pills HTML
+  const pillsHtml = [...senderSet]
+    .map(s => `<span class="lc-pill">${esc(s)}</span>`)
+    .join('\n      ');
+
+  // Build messages HTML
+  let bodyHtml = '';
+  let lastSender = null;
+  let lastTime   = null;
+
+  for (const m of messages) {
+    if (m.type === 'date') {
+      lastSender = null;
+      bodyHtml += `
+  <div class="lc-date-sep"><span class="lc-date-label">${esc(formatDateLabel(m.raw))}</span></div>`;
+      continue;
+    }
+
+    if (m.type === 'system') {
+      lastSender = null;
+      const timeTag = m.time ? ` · ${esc(m.time)}` : '';
+      bodyHtml += `
+  <div class="lc-system-row"><div class="lc-system-msg">${esc(m.text)}${timeTag}</div></div>`;
+      continue;
+    }
+
+    // type === 'msg'
+    const isMe        = myName && m.sender === myName;
+    const isFirstInGrp = m.sender !== lastSender;
+    const avIdx       = colourMap[m.sender] ?? 0;
+    const avInit      = initials(m.sender);
+
+    const rowClasses = [
+      'lc-msg-row',
+      isMe ? 'is-me' : '',
+      isFirstInGrp ? 'first-in-group' : ''
+    ].filter(Boolean).join(' ');
+
+    // Avatar or placeholder
+    const avatarHtml = isFirstInGrp
+      ? `<div class="lc-avatar av-${avIdx}">${esc(avInit)}</div>`
+      : `<div class="lc-avatar-placeholder"></div>`;
+
+    // Sender name (only first in group, and only for others)
+    const senderHtml = (isFirstInGrp && !isMe)
+      ? `<div class="lc-sender-name">${esc(m.sender)}</div>`
+      : '';
+
+    // Bubble content
+    let bubbleContent;
+    const trimmed = m.text.trim();
+    if (isMedia(trimmed)) {
+      const media = MEDIA_MAP[trimmed];
+      bubbleContent = `<div class="lc-media-bubble">${media.icon} ${esc(media.label)}</div>`;
+    } else {
+      bubbleContent = `<div class="lc-bubble">${linkify(m.text)}</div>`;
+    }
+
+    bodyHtml += `
+  <div class="${rowClasses}">
+    ${avatarHtml}
+    <div class="lc-msg-group">
+      ${senderHtml}
+      <div class="lc-bubble-wrap">
+        ${bubbleContent}
+        <span class="lc-timestamp">${esc(m.time)}</span>
+      </div>
+    </div>
+  </div>`;
+
+    lastSender = m.sender;
+    lastTime   = m.time;
+  }
+
+  const displayTitle = title || 'LINE Chat';
+  const displaySave  = saveDate ? `儲存日期 ${saveDate}` : '';
+
+  return `<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(displayTitle)} — LINE 聊天記錄</title>
+<link rel="stylesheet" href="${cssPath}">
+</head>
+<body>
+
+<div class="lc-header">
+  <div class="lc-header-icon">💬</div>
+  <div class="lc-header-text">
+    <h1>${esc(displayTitle)}</h1>
+    <p>LINE 群組聊天記錄${displaySave ? ' · ' + esc(displaySave) : ''}</p>
+    <div class="lc-member-pills">
+      ${pillsHtml}
+    </div>
+  </div>
+</div>
+
+<div class="lc-chat">
+${bodyHtml}
+</div>
+
+</body>
+</html>`;
+}
+
+// ── UI Wiring ──────────────────────────────────────────────
+
+const dropzone     = document.getElementById('dropzone');
+const fileInput    = document.getElementById('file-input');
+const dzLabel      = document.getElementById('dz-label');
+const nameField    = document.getElementById('name-field');
+const namePicker   = document.getElementById('name-picker');
+const convertBtn   = document.getElementById('convert-btn');
+const statusEl     = document.getElementById('status');
+const previewPanel = document.getElementById('preview-panel');
+const previewFrame = document.getElementById('preview-frame');
+const previewLabel = document.getElementById('preview-label');
+const downloadBtn    = document.getElementById('download-btn');
+const downloadCssBtn = document.getElementById('download-css-btn');
+
+// Avatar palette colours (must match line-chat.css av-N vars)
+const AV_COLOURS = [
+  '#e05c5c','#e07d3c','#c9a42a','#4caf7d',
+  '#2a9dc9','#7b5cf0','#c94e8e','#5c8ee0'
+];
+
+let loadedFile    = null;  // File object
+let parsedData    = null;  // result of parseLineTxt()
+let selectedName  = '';    // currently selected sender ("" = none)
+let generatedHtml = '';    // last built HTML string
+let chatTitle     = '';
+
+function setStatus(msg, cls = '')
+{
+  statusEl.textContent = msg;
+  statusEl.className   = 'lc-status ' + cls;
+}
+
+/** Extract unique senders from parsed data */
+function extractSenders(parsed)
+{
+  const seen = [];
+  const set  = new Set();
+  for (const m of parsed.messages)
+  {
+    if (m.type === 'msg' && !set.has(m.sender))
+    {
+      set.add(m.sender);
+      seen.push(m.sender);
+    }
+  }
+  return seen;
+}
+
+/** Build the avatar initials string (matches initials() helper) */
+function avatarInitials(name)
+{
+  const ch = [...name.trim()];
+  if (!ch.length) return '?';
+  if (ch[0].codePointAt(0) > 0x2e7f) return ch[0];
+  return (ch[0] + (ch[1] || '')).toUpperCase();
+}
+
+/** Render the sender picker pills into #name-picker */
+function buildNamePicker(senders)
+{
+  namePicker.innerHTML = '';
+  selectedName = '';
+
+  // One button per sender
+  senders.forEach((name, idx) =>
+  {
+    const colour = AV_COLOURS[idx % AV_COLOURS.length];
+    const btn    = document.createElement('button');
+    btn.type      = 'button';
+    btn.className = 'lc-name-btn';
+    btn.dataset.name = name;
+    btn.innerHTML = `
+      <span class="nb-avatar" style="background:${colour}">${avatarInitials(name)}</span>
+      <span class="nb-label">${name}</span>
+      <span class="nb-check">✓</span>`;
+    btn.addEventListener('click', () => selectName(name));
+    namePicker.appendChild(btn);
+  });
+
+  // "Skip / no highlight" option
+  const noneBtn = document.createElement('button');
+  noneBtn.type      = 'button';
+  noneBtn.className = 'lc-name-btn none-btn';
+  noneBtn.dataset.name = '';
+  noneBtn.innerHTML = `<span class="nb-label">Skip — no highlight</span><span class="nb-check">✓</span>`;
+  noneBtn.addEventListener('click', () => selectName(''));
+  namePicker.appendChild(noneBtn);
+
+  nameField.style.display = '';
+}
+
+/** Mark a name button as selected */
+function selectName(name)
+{
+  selectedName = name;
+  namePicker.querySelectorAll('.lc-name-btn').forEach(btn =>
+  {
+    btn.classList.toggle('selected', btn.dataset.name === name);
+  });
+}
+
+// File selection via click
+fileInput.addEventListener('change', () =>
+{
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+// Drag & drop
+dropzone.addEventListener('dragover', e =>
+{
+  e.preventDefault();
+  dropzone.classList.add('drag-over');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e =>
+{
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(file)
+{
+  if (!file.name.endsWith('.txt'))
+  {
+    setStatus('Please select a .txt file exported from LINE.', 'error');
+    return;
+  }
+  loadedFile = file;
+
+  // Read file immediately to extract sender names
+  const reader = new FileReader();
+  reader.onload = e =>
+  {
+    try
+    {
+      parsedData = parseLineTxt(e.target.result);
+      const senders = extractSenders(parsedData);
+      buildNamePicker(senders);
+      dzLabel.textContent  = `✅ ${file.name}`;
+      convertBtn.disabled  = false;
+      const msgCount = parsedData.messages.filter(m => m.type === 'msg').length;
+      setStatus(`${msgCount} messages · ${senders.length} participants — select your name below`, 'ok');
+    }
+    catch (err)
+    {
+      setStatus('Error reading file: ' + err.message, 'error');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+convertBtn.addEventListener('click', () =>
+{
+  if (!parsedData) return;
+
+  try
+  {
+    const myName = selectedName;
+
+    generatedHtml = buildHtml(parsedData, myName, 'line.css');
+    chatTitle = parsedData.title || loadedFile.name.replace('.txt', '');
+
+    const inlined = generatedHtml.replace(
+      '<link rel="stylesheet" href="line.css">',
+      '<style>' + getInlineCSS() + '</style>'
+    );
+
+    const blob    = new Blob([inlined], { type: 'text/html' });
+    const blobUrl = URL.createObjectURL(blob);
+    previewFrame.src = blobUrl;
+
+    previewLabel.textContent = `Preview — ${chatTitle}`;
+    previewPanel.classList.add('visible');
+
+    const msgCount = parsedData.messages.filter(m => m.type === 'msg').length;
+    setStatus(`✓ Converted ${msgCount} messages from "${chatTitle}"`, 'ok');
+  }
+  catch (err)
+  {
+    setStatus('Error parsing file: ' + err.message, 'error');
+    console.error(err);
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!generatedHtml) return;
+  const blob = new Blob([generatedHtml], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (chatTitle || 'line-chat') + '.html';
+  a.click();
+});
+
+downloadCssBtn.addEventListener('click', () =>
+{
+  const a = document.createElement('a');
+  a.href = 'line.css';
+  a.download = 'line.css';
+  a.click();
+});
+
+// ── Inline CSS for sandboxed iframe preview ────────────────
+// Returns a condensed copy of the key visual styles so the
+// preview renders correctly without needing to load external files.
+function getInlineCSS() {
+  return `
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--line-green:#06c755;--accent:#7c83fd;--text:#e8eaf0;--text-muted:#7a7f96;--text-dim:#4a4f66;--bubble-me:#1e3a2e;--bubble-other:#1e2235;--bubble-system:#161925;--border:rgba(255,255,255,0.07);}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans HK',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.lc-header{background:var(--surface);border-bottom:1px solid var(--border);padding:18px 24px 14px;position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:14px;}
+.lc-header-icon{width:44px;height:44px;background:var(--line-green);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;}
+.lc-header-text h1{font-size:17px;font-weight:700;color:var(--text);}
+.lc-header-text p{font-size:12px;color:var(--text-muted);margin-top:2px;font-family:'DM Mono',monospace;}
+.lc-member-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.lc-pill{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text-muted);}
+.lc-chat{max-width:720px;margin:0 auto;padding:0 0 60px;}
+.lc-date-sep{display:flex;align-items:center;gap:12px;padding:28px 24px 12px;}
+.lc-date-sep::before,.lc-date-sep::after{content:'';flex:1;height:1px;background:var(--border);}
+.lc-date-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--text-dim);letter-spacing:.08em;white-space:nowrap;background:var(--bg);padding:0 4px;}
+.lc-system-row{display:flex;justify-content:center;padding:6px 24px;}
+.lc-system-msg{background:var(--bubble-system);border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;}
+.lc-msg-row{display:flex;align-items:flex-end;gap:8px;padding:2px 24px;margin:1px 0;}
+.lc-msg-row.is-me{flex-direction:row-reverse;}
+.lc-msg-row.first-in-group{margin-top:10px;}
+.lc-avatar{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;margin-bottom:2px;text-transform:uppercase;}
+.lc-avatar-placeholder{width:32px;flex-shrink:0;}
+.lc-msg-group{display:flex;flex-direction:column;max-width:65%;gap:3px;}
+.lc-sender-name{font-size:11px;color:var(--text-muted);font-weight:500;padding:0 4px;margin-bottom:1px;}
+.lc-msg-row.is-me .lc-sender-name{text-align:right;}
+.lc-bubble-wrap{display:flex;align-items:flex-end;gap:6px;}
+.lc-msg-row.is-me .lc-bubble-wrap{flex-direction:row-reverse;}
+.lc-bubble{background:var(--bubble-other);border-radius:16px 16px 16px 4px;padding:9px 13px;font-size:14px;line-height:1.65;color:var(--text);border:1px solid var(--border);word-break:break-word;white-space:pre-wrap;}
+.lc-msg-row.is-me .lc-bubble{background:var(--bubble-me);border-radius:16px 16px 4px 16px;border-color:rgba(6,199,85,.15);}
+.lc-bubble a{color:var(--accent);text-decoration:none;font-size:12px;opacity:.8;}
+.lc-timestamp{font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;flex-shrink:0;margin-bottom:3px;white-space:nowrap;}
+.lc-media-bubble{background:var(--surface2);border:1px dashed var(--border);border-radius:12px;padding:10px 16px;font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;}
+.av-0{background:#e05c5c}.av-1{background:#e07d3c}.av-2{background:#c9a42a}.av-3{background:#4caf7d}.av-4{background:#2a9dc9}.av-5{background:#7b5cf0}.av-6{background:#c94e8e}.av-7{background:#5c8ee0}
+`;
+}
+
+</script>
+
+</body>
+</html>

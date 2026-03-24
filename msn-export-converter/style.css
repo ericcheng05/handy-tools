@@ -1,0 +1,364 @@
+/* ================================================
+   MSN Chat Export Converter — Converter UI Stylesheet
+   style.css  ·  used by index.html only
+   ================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── Design tokens ── */
+:root
+{
+  --bg:              #f0f6ff;
+  --surface:         #ffffff;
+  --surface2:        #e8f1fb;
+  --msn-blue:        #0078D4;
+  --msn-blue-dim:    #005a9e;
+  --msn-blue-light:  #50E6FF;
+  --msn-blue-pale:   rgba(0,120,212,0.08);
+  --text:            #0f1c2e;
+  --text-muted:      #4a6080;
+  --text-dim:        #8aa0ba;
+  --border:          rgba(0,120,212,0.12);
+  --shadow:          0 4px 24px rgba(0,120,212,0.10);
+
+  /* Avatar palette */
+  --av-0: #e05c5c;
+  --av-1: #e07d3c;
+  --av-2: #c9a42a;
+  --av-3: #4caf7d;
+  --av-4: #2a9dc9;
+  --av-5: #7b5cf0;
+  --av-6: #c94e8e;
+  --av-7: #5c8ee0;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Body ── */
+body
+{
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  /* subtle dot-grid background matching site theme */
+  background-image: radial-gradient(circle, rgba(0,120,212,0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ══════════════════════════════════════
+   CONVERTER UI
+══════════════════════════════════════ */
+.msn-converter
+{
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  gap: 32px;
+}
+
+.msn-converter-card
+{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 40px;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: var(--shadow);
+}
+
+.msn-converter-card h2
+{
+  font-size: 22px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.msn-converter-card h2 span.icon
+{
+  background: linear-gradient(135deg, var(--msn-blue) 0%, var(--msn-blue-dim) 100%);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.msn-converter-card p
+{
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.msn-converter-card p code
+{
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--msn-blue);
+  border: 1px solid var(--border);
+}
+
+/* ── Drop zone ── */
+.msn-dropzone
+{
+  border: 2px dashed rgba(0,120,212,0.25);
+  border-radius: 14px;
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+}
+
+.msn-dropzone:hover,
+.msn-dropzone.drag-over
+{
+  border-color: var(--msn-blue);
+  background: rgba(0,120,212,0.05);
+}
+
+.msn-dropzone .dz-icon  { font-size: 36px; }
+
+.msn-dropzone .dz-label
+{
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.msn-dropzone .dz-sub
+{
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.msn-dropzone input[type="file"] { display: none; }
+
+/* ── "My name" field ── */
+.msn-field label
+{
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.msn-field-hint
+{
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ── Sender name picker ── */
+.msn-name-picker
+{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.msn-name-btn
+{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, color .18s, transform .12s;
+  user-select: none;
+}
+
+.msn-name-btn:hover
+{
+  border-color: var(--msn-blue);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.msn-name-btn.selected
+{
+  background: rgba(0,120,212,0.08);
+  border-color: var(--msn-blue);
+  color: var(--msn-blue-dim);
+  font-weight: 700;
+}
+
+.msn-name-btn .nb-avatar
+{
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.msn-name-btn.selected .nb-avatar
+{
+  box-shadow: 0 0 0 2px var(--msn-blue);
+}
+
+.msn-name-btn .nb-check
+{
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity .15s;
+  margin-left: 2px;
+}
+
+.msn-name-btn.selected .nb-check { opacity: 1; }
+
+.msn-name-btn.none-btn
+{
+  font-style: italic;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.msn-name-btn.none-btn.selected
+{
+  background: var(--surface2);
+  border-color: var(--text-dim);
+  color: var(--text-muted);
+}
+
+/* ── Convert button ── */
+.msn-btn
+{
+  background: linear-gradient(135deg, var(--msn-blue) 0%, var(--msn-blue-dim) 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 24px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity .2s, transform .1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(0,120,212,0.25);
+}
+
+.msn-btn:hover  { opacity: 0.88; }
+.msn-btn:active { transform: scale(.98); }
+.msn-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+
+/* ── Status bar ── */
+.msn-status
+{
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 20px;
+  font-family: 'DM Mono', monospace;
+}
+
+.msn-status.error { color: #e05c5c; }
+.msn-status.ok    { color: var(--msn-blue); }
+
+/* ── Preview panel ── */
+.msn-preview-panel
+{
+  width: 100%;
+  max-width: 800px;
+  display: none;
+}
+
+.msn-preview-panel.visible { display: block; }
+
+.msn-preview-toolbar
+{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--msn-blue-dim) 0%, var(--msn-blue) 100%);
+  border-radius: 14px 14px 0 0;
+  gap: 12px;
+}
+
+.msn-preview-toolbar span
+{
+  font-size: 13px;
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+}
+
+.msn-btn-sm
+{
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msn-btn-sm:hover { background: rgba(255,255,255,0.32); }
+
+.msn-preview-frame
+{
+  width: 100%;
+  height: 560px;
+  border: none;
+  border-radius: 0 0 14px 14px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,120,212,0.2); border-radius: 3px; }
+
+/* ── Responsive ── */
+@media (max-width: 600px)
+{
+  .msn-converter-card { padding: 28px 20px; }
+}

@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sushiro Queue Status</title>
+    <link rel="icon" type="image/x-icon" href="https://asset.myexample.work/dining/sushiro/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="header-inner">
+        <img src="https://asset.myexample.work/dining/sushiro/logo.png" alt="Sushiro" class="logo">
+        <h1>壽司郎 Queue</h1>
+    </div>
+    <p class="subtitle">即時分店狀態 · Live Store Status — Hong Kong</p>
+
+    <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label">
+            <span id="progressText">掃描分店…</span>
+            <span id="progressPct">0%</span>
+        </div>
+        <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+    </div>
+</header>
+
+<div class="filter-bar">
+    <button class="tab-btn active" data-filter="all">全部 All</button>
+    <button class="tab-btn" data-filter="open">營業中 Open</button>
+    <button class="tab-btn" data-filter="closed">閉店中 Closed</button>
+</div>
+
+<main class="main">
+    <div class="update-bar">
+        <div class="update-bar-left">
+            <span id="lastUpdated">載入中 Loading…</span>
+            <span class="store-count-badge" id="storeCount"></span>
+            <span id="storeListDate"></span>
+        </div>
+        <button class="refresh-btn" id="refreshBtn" onclick="startScan()">↻ Refresh</button>
+    </div>
+    <div id="regionsContainer"></div>
+</main>
+
+<script>
+    // ── API ───────────────────────────────────────────────────────────────────
+    // GET https://api.myexample.work/dining/sushiro/getStoreStatus?storeId={id}
+    //
+    // Success response (HTTP 200):
+    // {
+    //   status:  "OK",
+    //   message: "Success",
+    //   value: {
+    //     storeId:                number,
+    //     name_en:                string,
+    //     name_tc:                string,
+    //     region_tc:              string,
+    //     address_tc:             string,
+    //     store_status:           string,   // "營業中" | "閉店中"
+    //     store_ticketing_status: string,   // "派籌中" | "暫停派籌"
+    //     waiting_count:          number,
+    //     queue:                  string[]
+    //   }
+    // }
+
+    const API_ENDPOINT    = "https://api.myexample.work/dining/sushiro/getStoreStatus?storeId=";
+    const STORE_LIST_JSON = "https://opendata.myexample.work/restaurants-hk/sushiro.json";
+
+    const STATUS_OPEN            = "營業中";
+    const TICKETING_ACTIVE_VALUE = "派籌中";
+
+    const FETCH_CONCURRENCY = 10;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let stores       = [];
+    let activeFilter = "all";
+    let scanning     = false;
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    document.addEventListener("DOMContentLoaded", () =>
+    {
+        setupFilters();
+        startScan();
+    });
+
+    // ── Filter tabs ───────────────────────────────────────────────────────────
+    function setupFilters()
+    {
+        document.querySelectorAll(".tab-btn").forEach(btn =>
+        {
+            btn.addEventListener("click", () =>
+            {
+                document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                activeFilter = btn.dataset.filter;
+                renderRegions();
+            });
+        });
+    }
+
+    // ── Load store ID list then scan ──────────────────────────────────────────
+    async function startScan()
+    {
+        if (scanning) return;
+        scanning = true;
+
+        const btn     = document.getElementById("refreshBtn");
+        btn.disabled  = true;
+        btn.innerHTML = '<span class="spinning">↻</span> Scanning';
+
+        stores = [];
+        renderSkeletons();
+
+        // Step 1: fetch the store list from opendata
+        let ids = [];
+        try
+        {
+            const res  = await fetch(STORE_LIST_JSON);
+            const json = await res.json();
+
+            // Extract IDs from branches array: [{ "id": 2 }, { "id": 3 }, ...]
+            ids = (json.branches || []).map(b => b.id).filter(Boolean);
+
+            const listDate = json.updated || "";
+            if (listDate)
+            {
+                document.getElementById("storeListDate").textContent = "店舖列表: " + listDate;
+            }
+        }
+        catch (err)
+        {
+            document.getElementById("regionsContainer").innerHTML =
+                `<div class="state-message">⚠ 無法載入店舖列表</div>`;
+            btn.disabled  = false;
+            btn.innerHTML = "↻ Refresh";
+            scanning      = false;
+            return;
+        }
+
+        if (ids.length === 0)
+        {
+            document.getElementById("regionsContainer").innerHTML =
+                `<div class="state-message">店舖列表為空。</div>`;
+            btn.disabled  = false;
+            btn.innerHTML = "↻ Refresh";
+            scanning      = false;
+            return;
+        }
+
+        // Step 2: fetch each store with concurrency
+        setProgress(0, ids.length);
+        let completed = 0;
+
+        for (let i = 0; i < ids.length; i += FETCH_CONCURRENCY)
+        {
+            const chunk   = ids.slice(i, i + FETCH_CONCURRENCY);
+            const results = await Promise.allSettled(chunk.map(id => fetchStore(id)));
+
+            results.forEach(result =>
+            {
+                if (result.status === "fulfilled" && result.value !== null)
+                {
+                    stores.push(result.value);
+                }
+            });
+
+            completed += chunk.length;
+            setProgress(completed, ids.length);
+        }
+
+        stores.sort((a, b) => a.storeId - b.storeId);
+        renderRegions();
+
+        const now = new Date().toLocaleTimeString("zh-HK",
+            { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        document.getElementById("lastUpdated").textContent = "更新時間 " + now;
+
+        updateStoreCount();
+        hideProgress();
+
+        btn.disabled  = false;
+        btn.innerHTML = "↻ Refresh";
+        scanning      = false;
+    }
+
+    // ── Fetch one store ───────────────────────────────────────────────────────
+    async function fetchStore(storeId)
+    {
+        try
+        {
+            const res  = await fetch(API_ENDPOINT + storeId);
+            const json = await res.json();
+
+            if (json.status !== "OK" || !json.value) return null;
+
+            const v = json.value;
+
+            return {
+                storeId:         v.storeId,
+                nameTc:          v.name_tc                  || "",
+                nameEn:          v.name_en                  || "",
+                regionTc:        v.region_tc                || "其他",
+                addressTc:       v.address_tc               || "",
+                storeStatus:     v.store_status             || "",
+                isOpen:          v.store_status === STATUS_OPEN,
+                ticketingStatus: v.store_ticketing_status   || "",
+                isTicketing:     v.store_ticketing_status === TICKETING_ACTIVE_VALUE,
+                waitingCount:    v.waiting_count            ?? null,
+                queue:           v.queue                    || []
+            };
+        }
+        catch (err)
+        {
+            return null;
+        }
+    }
+
+    // ── Group stores by regionTc ──────────────────────────────────────────────
+    function groupByRegion(storeList)
+    {
+        const map = new Map();
+
+        storeList.forEach(store =>
+        {
+            const region = store.regionTc || "其他";
+            if (!map.has(region)) map.set(region, []);
+            map.get(region).push(store);
+        });
+
+        return map;
+    }
+
+    // ── Render all region sections ────────────────────────────────────────────
+    function renderRegions()
+    {
+        const container     = document.getElementById("regionsContainer");
+        container.innerHTML = "";
+
+        const filtered = stores.filter(matchesFilter);
+
+        if (filtered.length === 0)
+        {
+            container.innerHTML = `<div class="state-message">沒有符合條件的分店。</div>`;
+            updateStoreCount();
+            return;
+        }
+
+        const grouped = groupByRegion(filtered);
+        let sectionIdx = 0;
+
+        grouped.forEach((regionStores, regionName) =>
+        {
+            const section = document.createElement("section");
+            section.className = "region-section";
+            section.style.animationDelay = (sectionIdx * 0.06) + "s";
+
+            const heading = document.createElement("div");
+            heading.className = "region-heading";
+            heading.innerHTML = `
+                <h2>${esc(regionName)}</h2>
+                <span class="region-store-count">${regionStores.length} 間</span>`;
+            section.appendChild(heading);
+
+            const grid     = document.createElement("div");
+            grid.className = "card-grid";
+
+            regionStores.forEach((store, cardIdx) =>
+            {
+                grid.appendChild(buildStoreCard(store, cardIdx));
+            });
+
+            section.appendChild(grid);
+            container.appendChild(section);
+            sectionIdx++;
+        });
+
+        updateStoreCount();
+    }
+
+    // ── Build one store card ──────────────────────────────────────────────────
+    function buildStoreCard(store, animIdx)
+    {
+        const card     = document.createElement("div");
+        card.className = "store-card";
+        card.style.animationDelay = Math.min(animIdx * 0.04, 0.5) + "s";
+
+        const badgeClass = store.isOpen ? "open" : "closed";
+
+        let ticketingRow = "";
+        if (store.isOpen)
+        {
+            const ticketingIcon = store.isTicketing ? "🟢" : "🔴";
+            ticketingRow = `
+                <div class="card-row">
+                    <span class="row-label">派籌狀態</span>
+                    <span class="row-value">${ticketingIcon} ${esc(store.ticketingStatus)}</span>
+                </div>`;
+        }
+
+        let queueRow = "";
+        if (store.isOpen)
+        {
+            let ticketsHtml;
+            if (store.queue && store.queue.length > 0)
+            {
+                ticketsHtml = `<div class="queue-tickets">` +
+                    store.queue.map(t => `<span class="ticket-chip">${esc(String(t))}</span>`).join("") +
+                    `</div>`;
+            }
+            else
+            {
+                ticketsHtml = `<span class="row-value">—</span>`;
+            }
+
+            queueRow = `
+                <div class="card-row">
+                    <span class="row-label">現在籌號</span>
+                    ${ticketsHtml}
+                </div>`;
+        }
+
+        const addressStrip = store.addressTc
+            ? `<div class="card-address">📍 ${esc(store.addressTc)}</div>`
+            : "";
+
+        card.innerHTML = `
+            <div class="card-header">
+                <div>
+                    <div class="store-name-tc">${esc(store.nameTc || "Store " + store.storeId)}</div>
+                    <div class="store-name-en">${esc(store.nameEn)}</div>
+                </div>
+                <span class="status-badge ${badgeClass}">${esc(store.storeStatus)}</span>
+            </div>
+            <div class="store-meta">
+                <span class="store-id-label">ID #${store.storeId}</span>
+            </div>
+            ${addressStrip}
+            ${ticketingRow}
+            <div class="card-row">
+                <span class="row-label">等候組數</span>
+                <span class="row-value big">${store.waitingCount != null ? store.waitingCount : "—"}</span>
+            </div>
+            ${queueRow}`;
+
+        return card;
+    }
+
+    // ── Skeleton placeholders ─────────────────────────────────────────────────
+    function renderSkeletons()
+    {
+        const container     = document.getElementById("regionsContainer");
+        container.innerHTML = "";
+
+        for (let s = 0; s < 3; s++)
+        {
+            const section = document.createElement("section");
+            section.className = "region-section";
+
+            section.innerHTML = `
+                <div class="region-heading">
+                    <div class="skel" style="height:20px;width:120px;border-radius:6px;"></div>
+                </div>`;
+
+            const grid     = document.createElement("div");
+            grid.className = "card-grid";
+
+            for (let i = 0; i < 4; i++)
+            {
+                grid.innerHTML += `
+                    <div class="skeleton-card">
+                        <div class="skel skel-title"></div>
+                        <div class="skel skel-subtitle"></div>
+                        <div class="skel skel-addr"></div>
+                        <div class="skel skel-row"></div>
+                        <div class="skel skel-row-sm"></div>
+                    </div>`;
+            }
+
+            section.appendChild(grid);
+            container.appendChild(section);
+        }
+
+        document.getElementById("storeCount").textContent = "";
+    }
+
+    // ── Progress bar ──────────────────────────────────────────────────────────
+    function setProgress(done, total)
+    {
+        const ratio = Math.round((done / total) * 100);
+        document.getElementById("progressWrap").classList.add("visible");
+        document.getElementById("progressFill").style.width = ratio + "%";
+        document.getElementById("progressText").textContent = `掃描分店… ${done} / ${total}`;
+        document.getElementById("progressPct").textContent  = ratio + "%";
+    }
+
+    function hideProgress()
+    {
+        document.getElementById("progressWrap").classList.remove("visible");
+    }
+
+    // ── Filter helpers ────────────────────────────────────────────────────────
+    function matchesFilter(store)
+    {
+        if (activeFilter === "open")   return store.isOpen === true;
+        if (activeFilter === "closed") return store.isOpen === false;
+        return true;
+    }
+
+    function updateStoreCount()
+    {
+        const filtered = stores.filter(matchesFilter);
+        document.getElementById("storeCount").textContent = filtered.length + " 間分店";
+    }
+
+    // ── Utility ───────────────────────────────────────────────────────────────
+    function esc(str)
+    {
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+</script>
+
+</body>
+</html>

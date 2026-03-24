@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LCSD Swimming Pools — Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Back nav -->
+  <nav class="back-nav">
+    <a class="back-link" href="../">← myexample.work</a>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-eyebrow">myexample.work</div>
+    <h1>LCSD <em>Swimming Pools</em><br>Status</h1>
+    <p class="hero-sub">Opening status for LCSD public swimming pools across Hong Kong. Facility-level availability, session times, and maintenance notices — computed from LCSD schedule data.</p>
+    <div class="hero-meta">
+      <span class="hero-badge">Client-side</span>
+      <span class="hero-badge">LCSD Data</span>
+    </div>
+  </header>
+
+  <!-- Summary -->
+  <div class="summary-strip" id="summaryStrip" style="display:none">
+    <div class="summary-stat">
+      <span class="stat-num" id="statTotal">—</span>
+      <span class="stat-label">Total Pools</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="summary-stat">
+      <span class="stat-num open-color" id="statOpen">—</span>
+      <span class="stat-label">Open Now</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="summary-stat">
+      <span class="stat-num closed-color" id="statClosed">—</span>
+      <span class="stat-label">Closed</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div style="display:flex;flex-direction:column;gap:10px;flex:1">
+      <!-- Status filter — single select -->
+      <div class="filter-group">
+        <span class="filter-label">Status</span>
+        <button class="chip active" data-filter-status="all">All</button>
+        <button class="chip" data-filter-status="open">Open Now</button>
+        <button class="chip" data-filter-status="closed">Closed</button>
+      </div>
+      <!-- Facility class filter — multi-select, populated from API -->
+      <div class="filter-group" id="facFilterGroup">
+        <span class="filter-label">Facility</span>
+        <button class="chip active" data-filter-class="all">All Types</button>
+      </div>
+      <!-- Region filter — multi-select, populated from API -->
+      <div class="filter-group" id="regionFilterGroup">
+        <span class="filter-label">Region</span>
+        <button class="chip active" data-filter-region="all">All Regions</button>
+      </div>
+    </div>
+    <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-strip" id="progressStrip">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <!-- Regions container -->
+  <div id="regionsContainer"></div>
+
+</div>
+
+<script>
+/* =====================================================================
+   LCSD Swimming Pools Dashboard
+   API: https://opendata.myexample.work
+   ===================================================================== */
+
+const BASE          = "https://opendata.myexample.work";
+const INDEX_URL     = BASE + "/swimming-pools-hk.json";
+const HOLIDAYS_URL  = BASE + "/holidays-hk.json";
+const POOL_URL      = id => BASE + "/swimming-pools-hk/" + id + ".json";
+const CONCURRENCY   = 8;
+
+// ── State ─────────────────────────────────────────────────
+let indexData       = null;
+let allPools        = [];
+let facilityClasses = [];
+let holidaySet      = new Set();   // "YYYY-M-D" strings for fast lookup
+let filterStatus    = "all";
+let filterClasses   = new Set();   // empty = all; entries = selected class integers
+let filterRegions   = new Set();   // empty = all; entries = selected region name_en strings
+let loading         = false;
+
+// ── Current HKT time (UTC+8) ──────────────────────────────
+const _now      = new Date();
+const _hktMs    = _now.getTime() + (8 * 60 + _now.getTimezoneOffset()) * 60000;
+const hktNow    = new Date(_hktMs);
+
+const TODAY_DOW   = hktNow.getDay();
+const TODAY_MONTH = hktNow.getMonth() + 1;
+const TODAY_DAY   = hktNow.getDate();
+const TODAY_H     = hktNow.getHours() + hktNow.getMinutes() / 60;
+
+// ── Init ──────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () =>
+{
+  setupFilters();
+  loadAll();
+  document.getElementById("refreshBtn").addEventListener("click", () => loadAll());
+});
+
+// ── Filter wiring ─────────────────────────────────────────
+function setupFilters()
+{
+  document.querySelectorAll("[data-filter-status]").forEach(btn =>
+  {
+    btn.addEventListener("click", () =>
+    {
+      document.querySelectorAll("[data-filter-status]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filterStatus = btn.dataset.filterStatus;
+      render();
+    });
+  });
+}
+
+// ── Multi-select chip helper ───────────────────────────────
+/**
+ * Wire a filter group for multi-select toggle behaviour.
+ * @param {string}  groupId    — element ID of the filter-group div
+ * @param {string}  dataAttr   — the data-* attribute name on each chip
+ * @param {Set}     filterSet  — the Set to mutate on toggle
+ * @param {string}  allValue   — the value that means "select all" (clears the set)
+ */
+function wireMultiSelect(groupId, dataAttr, filterSet, allValue)
+{
+  const grp    = document.getElementById(groupId);
+  const allBtn = grp.querySelector(`[${dataAttr}="${allValue}"]`);
+
+  grp.querySelectorAll(`[${dataAttr}]`).forEach(btn =>
+  {
+    const val = btn.dataset[dataAttr.replace("data-", "").replace(/-([a-z])/g, (_, c) => c.toUpperCase())];
+    if (val === allValue) return;   // handled separately below
+
+    btn.addEventListener("click", () =>
+    {
+      if (filterSet.has(val))
+      {
+        filterSet.delete(val);
+        btn.classList.remove("active");
+      }
+      else
+      {
+        filterSet.add(val);
+        btn.classList.add("active");
+      }
+      // "All" chip active only when nothing is selected
+      allBtn.classList.toggle("active", filterSet.size === 0);
+      render();
+    });
+  });
+
+  allBtn.addEventListener("click", () =>
+  {
+    filterSet.clear();
+    grp.querySelectorAll(`[${dataAttr}]`).forEach(b => b.classList.remove("active"));
+    allBtn.classList.add("active");
+    render();
+  });
+}
+
+function buildClassFilters(classes)
+{
+  const grp = document.getElementById("facFilterGroup");
+  grp.querySelectorAll("[data-filter-class]:not([data-filter-class='all'])").forEach(b => b.remove());
+
+  classes.forEach(c =>
+  {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.dataset.filterClass = String(c.class);
+    btn.textContent = c.name_en;
+    grp.appendChild(btn);
+  });
+
+  wireMultiSelect("facFilterGroup", "data-filter-class", filterClasses, "all");
+}
+
+function buildRegionFilters(regions)
+{
+  const grp = document.getElementById("regionFilterGroup");
+  grp.querySelectorAll("[data-filter-region]:not([data-filter-region='all'])").forEach(b => b.remove());
+
+  regions.forEach(r =>
+  {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.dataset.filterRegion = r.name_en;
+    btn.textContent = r.name_en;
+    grp.appendChild(btn);
+  });
+
+  wireMultiSelect("regionFilterGroup", "data-filter-region", filterRegions, "all");
+}
+
+// ── Load ──────────────────────────────────────────────────
+async function loadAll()
+{
+  if (loading) return;
+  loading = true;
+
+  const btn    = document.getElementById("refreshBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">↻</span> Loading';
+
+  allPools = [];
+  renderSkeletons(12);
+  showProgress(0, 1);
+
+  // 1. Fetch index and holiday list in parallel
+  try
+  {
+    const [indexRes, holidayRes] = await Promise.all([
+      fetch(INDEX_URL),
+      fetch(HOLIDAYS_URL)
+    ]);
+
+    indexData       = await indexRes.json();
+    facilityClasses = indexData.facility_class || [];
+    buildClassFilters(facilityClasses);
+    buildRegionFilters(indexData.region || []);
+
+    // Build a fast-lookup Set of "YYYY-M-D" keys (month is 0-based, matching the JSON)
+    const holidayJson = await holidayRes.json();
+    holidaySet = new Set(
+      (holidayJson.holidays || []).map(h => `${h.year}-${h.month}-${h.date}`)
+    );
+  }
+  catch (e)
+  {
+    document.getElementById("regionsContainer").innerHTML =
+      `<div class="no-results">⚠ Could not load pool index. ${e.message}</div>`;
+    btn.disabled  = false;
+    btn.innerHTML = "↻ Refresh";
+    loading       = false;
+    return;
+  }
+
+  // Collect all IDs in region order
+  const allIds = (indexData.region || [])
+    .flatMap(r => r.district)
+    .flatMap(d => d.swpId_list);
+
+  const total = allIds.length;
+  let done    = 0;
+
+  // 2. Fetch each pool with concurrency
+  for (let i = 0; i < allIds.length; i += CONCURRENCY)
+  {
+    const chunk   = allIds.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map(id => fetchPool(id)));
+    results.forEach(r => { if (r.status === "fulfilled" && r.value) allPools.push(r.value); });
+    done += chunk.length;
+    showProgress(done, total);
+  }
+
+  hideProgress();
+  document.getElementById("summaryStrip").style.display = "flex";
+  updateSummary();
+  render();
+
+  btn.disabled  = false;
+  btn.innerHTML = "↻ Refresh";
+  loading       = false;
+}
+
+async function fetchPool(id)
+{
+  try
+  {
+    const res  = await fetch(POOL_URL(id));
+    if (!res.ok) return null;
+    const data = await res.json();
+    data._status = computePoolStatus(data);
+    const { openFids, tcReasons } = computeOpenFids(data);
+    data._openFids  = openFids;
+    data._tcReasons = tcReasons;
+    return data;
+  }
+  catch (e) { return null; }
+}
+
+// ── Status computation ────────────────────────────────────
+
+function inDateRange(from, until)
+{
+  if (!from) return true;
+  const start = from.month  * 100 + from.day;
+  const end   = until.month * 100 + until.day;
+  const today = TODAY_MONTH * 100 + TODAY_DAY;
+  return start <= end
+    ? today >= start && today <= end
+    : today >= start || today <= end;
+}
+
+function toH(hhmm)
+{
+  const [h, m] = hhmm.split(":").map(Number);
+  return h + m / 60;
+}
+
+/** Check if a given HKT date is a HK public holiday.
+ *  month is 0-based (matching Date.getMonth() and the holidays JSON). */
+function isHoliday(year, month0based, date)
+{
+  return holidaySet.has(`${year}-${month0based}-${date}`);
+}
+
+function computePoolStatus(pool)
+{
+  // Build HKT datetime string manually — toISOString() returns UTC regardless of how
+  // the Date was constructed, so it cannot be used for HKT comparisons.
+  const pad    = n => String(n).padStart(2, "0");
+  const nowHkt = hktNow.getFullYear() + "-"
+               + pad(hktNow.getMonth() + 1) + "-"
+               + pad(hktNow.getDate())      + "T"
+               + pad(hktNow.getHours())     + ":"
+               + pad(hktNow.getMinutes());
+
+  // Whole-pool temporary closure
+  // facility_ids === null means all facilities → whole pool closed.
+  // A non-null list only closes specific facilities; that is handled per-facility
+  // in computeOpenFids, not here.
+  for (const tc of (pool.schedule.temporary_closures || []))
+  {
+    if (tc.facility_ids !== null) continue;
+    if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
+      return { open: false, tag: "Temporary Closure" };
+  }
+
+  // Whole-pool annual maintenance
+  for (const am of (pool.schedule.annual_maintenance || []))
+  {
+    if (am.facility_ids !== null) continue;
+    const start   = am.start_month * 100 + am.start_day;
+    const end     = am.end_month   * 100 + am.end_day;
+    const today   = TODAY_MONTH * 100 + TODAY_DAY;
+    const inMaint = start <= end
+      ? today >= start && today <= end
+      : today >= start || today <= end;
+    if (inMaint) return { open: false, tag: "Annual Maintenance" };
+  }
+
+  // Sessions for today
+  const sessions = (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(TODAY_DOW) && inDateRange(s.valid_from, s.valid_until)
+  );
+
+  // TODO: certain pools close entirely on public holidays — that closure logic will
+  // be applied here once confirmed by the data source.
+  if (sessions.length === 0) return { open: false, tag: "No Session Today" };
+
+  // Weekly cleansing — runs from 10:00 to the end of session 2 (slot with session === 2).
+  // The pool reopens for session 3.
+  // If the primary cleansing day falls on a public holiday, use the alternative day instead.
+  // If the alternative also falls on a public holiday (rare), no cleansing is applied that week.
+  if (pool.weekly_cleansing_day)
+  {
+    const todayIsHoliday = isHoliday(
+      hktNow.getFullYear(), hktNow.getMonth(), hktNow.getDate()
+    );
+
+    // Determine which cleansing day applies today
+    const primaryDay     = pool.weekly_cleansing_day.primary;
+    const alternativeDay = pool.weekly_cleansing_day.alternative;
+
+    const primaryIsToday     = TODAY_DOW === primaryDay;
+    const alternativeIsToday = TODAY_DOW === alternativeDay;
+
+    // Cleansing applies if:
+    // — today is the primary day AND today is not a public holiday, OR
+    // — today is the alternative day AND the primary day this week falls on a public holiday
+    //   (we approximate "primary falls on a holiday this week" by checking if today is the
+    //   alternative AND today itself is not a holiday)
+    const cleansingApplies =
+      (primaryIsToday && !todayIsHoliday) ||
+      (alternativeIsToday && !todayIsHoliday && (() =>
+      {
+        // Check if the primary day this week is a holiday by computing its date
+        const daysFromPrimary = (primaryDay - TODAY_DOW + 7) % 7 || 7;
+        const primaryDate = new Date(hktNow);
+        primaryDate.setDate(hktNow.getDate() - (7 - daysFromPrimary) % 7);
+        // If today DOW > primaryDay, primary was earlier this week
+        const diff = primaryDay - TODAY_DOW;
+        const primaryThisWeek = new Date(hktNow);
+        primaryThisWeek.setDate(hktNow.getDate() + diff);
+        return isHoliday(
+          primaryThisWeek.getFullYear(),
+          primaryThisWeek.getMonth(),
+          primaryThisWeek.getDate()
+        );
+      })());
+
+    if (cleansingApplies)
+    {
+      const CLEANSING_START = 10;   // 10:00 HKT
+
+      const slot2 = sessions
+        .flatMap(s => s.slots || [])
+        .find(sl => sl.session === 2);
+
+      // Pool reopens at the open time of session 3, not the close of session 2
+      const slot3 = sessions
+        .flatMap(s => s.slots || [])
+        .find(sl => sl.session === 3);
+
+      if (slot2 && TODAY_H >= CLEANSING_START && TODAY_H < toH(slot2.close))
+        return { open: false, tag: "Weekly Cleansing", cleansingUntil: slot3 ? slot3.open : null };
+    }
+  }
+
+  // All slots for today, sorted by open time — used for session break and end-of-day checks
+  const allTodaySlots = sessions
+    .flatMap(s => s.slots || [])
+    .sort((a, b) => toH(a.open) - toH(b.open));
+
+  // Inside an open slot right now?
+  for (const slot of allTodaySlots)
+  {
+    if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
+    {
+      const minsLeft = (toH(slot.close) - TODAY_H) * 60;
+      let tag = null;
+      if (minsLeft <= 30)       tag = "No Admission";
+      else if (minsLeft <= 60)  tag = "Session Ends in 60 Minutes";
+      return { open: true, tag, slot };
+    }
+  }
+
+  // Between sessions — a future slot exists today.
+  // Always "Session Break" since a real session is still coming regardless of time of day.
+  const nextSlot = allTodaySlots.find(sl => toH(sl.open) > TODAY_H);
+  if (nextSlot)
+    return { open: false, tag: "Session Break", nextOpen: nextSlot.open };
+
+  // All slots have passed for today — end of day.
+  // Look for first valid opening tomorrow to show reopen time.
+  // Before midnight: "Tomorrow from HH:MM"
+  // From midnight until first session opens: "Opening Soon · HH:MM"
+  const tomorrowDow = (TODAY_DOW + 1) % 7;
+  const tomorrowSessions = (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(tomorrowDow) && inDateRange(s.valid_from, s.valid_until)
+  );
+  const tomorrowFirst = tomorrowSessions
+    .flatMap(s => s.slots || [])
+    .sort((a, b) => toH(a.open) - toH(b.open))[0];
+
+  // TODAY_H < 6 means we are past midnight (0:00–5:59) — sessions today already exhausted
+  // but the next opening is still "today" from the user's perspective
+  const isPostMidnight = TODAY_H < 6;
+
+  return {
+    open:          false,
+    tag:           isPostMidnight ? "Opening Soon" : "End of Day",
+    nextOpen:      tomorrowFirst ? tomorrowFirst.open : null,
+    nextOpenLabel: isPostMidnight ? "Opens at" : "Tomorrow from"
+  };
+}
+
+function computeOpenFids(pool)
+{
+  const allFids = (pool.facilities || []).map(f => f.fid);
+
+  // Build HKT datetime string (same reason as in computePoolStatus)
+  const pad    = n => String(n).padStart(2, "0");
+  const nowHkt = hktNow.getFullYear() + "-"
+               + pad(hktNow.getMonth() + 1) + "-"
+               + pad(hktNow.getDate())      + "T"
+               + pad(hktNow.getHours())     + ":"
+               + pad(hktNow.getMinutes());
+
+  // tcClosed maps fid → { reason, until } for facilities under a current temp closure
+  const tcClosed = new Map();
+  for (const tc of (pool.schedule.temporary_closures || []))
+  {
+    if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
+    {
+      const reason = tc.reason_en || "Temporary Closure";
+      const until  = "Until " + tc.end.slice(0, 16).replace("T", " ");
+      (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, { reason, until }));
+    }
+  }
+
+  const amClosed = new Set();
+  for (const am of (pool.schedule.annual_maintenance || []))
+  {
+    const start   = am.start_month * 100 + am.start_day;
+    const end     = am.end_month   * 100 + am.end_day;
+    const today   = TODAY_MONTH * 100 + TODAY_DAY;
+    const inMaint = start <= end
+      ? today >= start && today <= end
+      : today >= start || today <= end;
+    if (inMaint)
+      (am.facility_ids === null ? allFids : am.facility_ids).forEach(f => amClosed.add(f));
+  }
+
+  let sessionOpen = undefined;
+  for (const sess of (pool.schedule.sessions || []).filter(s =>
+    s.days.includes(TODAY_DOW) && inDateRange(s.valid_from, s.valid_until)
+  ))
+  {
+    for (const slot of (sess.slots || []))
+    {
+      if (TODAY_H >= toH(slot.open) && TODAY_H < toH(slot.close))
+      {
+        sessionOpen = sess.facility_ids === null ? null : new Set(sess.facility_ids);
+        break;
+      }
+    }
+    if (sessionOpen !== undefined) break;
+  }
+
+  // Return both the open fid list and the tc reasons map so callers can annotate the UI
+  const openFids = allFids.filter(fid =>
+  {
+    if (tcClosed.has(fid) || amClosed.has(fid)) return false;
+    if (sessionOpen === undefined) return false;
+    if (sessionOpen === null)      return true;
+    return sessionOpen.has(fid);
+  });
+
+  return { openFids, tcReasons: tcClosed };
+}
+
+// ── Render ────────────────────────────────────────────────
+function render()
+{
+  const container = document.getElementById("regionsContainer");
+  container.innerHTML = "";
+  updateSummary();
+  if (!indexData) return;
+
+  for (const region of indexData.region)
+  {
+    // Region filter — skip this region block if it is not in the selected set
+    if (filterRegions.size > 0 && !filterRegions.has(region.name_en)) continue;
+
+    const regionIds = region.district.flatMap(d => d.swpId_list);
+    let regionPools = allPools.filter(p => regionIds.includes(p.swpId));
+
+    if (filterStatus === "open")   regionPools = regionPools.filter(p => p._status.open);
+    if (filterStatus === "closed") regionPools = regionPools.filter(p => !p._status.open);
+
+    // Facility filter — keep pools that have at least one facility matching any selected class
+    if (filterClasses.size > 0)
+    {
+      regionPools = regionPools.filter(p =>
+        p.facilities && p.facilities.some(f => filterClasses.has(String(f.class)))
+      );
+    }
+
+    if (regionPools.length === 0) continue;
+
+    const block = document.createElement("div");
+    block.className = "region-block";
+
+    const label = document.createElement("p");
+    label.className = "section-label";
+    label.innerHTML =
+      `${esc(region.name_zh)} · ${esc(region.name_en)} ` +
+      `<span style="color:var(--muted);font-size:9px">(${regionPools.length})</span>`;
+    block.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "pool-grid";
+    regionPools.forEach((pool, idx) => grid.appendChild(buildPoolCard(pool, idx)));
+
+    block.appendChild(grid);
+    container.appendChild(block);
+  }
+
+  if (container.innerHTML === "")
+    container.innerHTML = `<div class="no-results">No pools match the current filter.</div>`;
+}
+
+function buildPoolCard(pool, idx)
+{
+  const card    = document.createElement("div");
+  card.className = "pool-card" + (pool._status.open ? "" : " closed");
+  card.style.animationDelay = Math.min(idx * 0.035, 0.4) + "s";
+
+  // Status badge — always just OPEN or CLOSED
+  const statusBadge = pool._status.open
+    ? `<span class="status-badge open">● Open</span>`
+    : `<span class="status-badge closed">● Closed</span>`;
+
+  // Info tag — shown below pool name when there is actionable context beyond the session line.
+  // Tags that are already fully described by the session line text (Weekly Cleansing,
+  // Session Break, End of Day, No Session Today) are suppressed here to avoid repetition.
+  const SESSION_LINE_TAGS = new Set([
+    "Weekly Cleansing", "Session Break", "Opening Soon",
+    "End of Day", "No Session Today", "Annual Maintenance"
+  ]);
+  const infoTag = pool._status.tag && !SESSION_LINE_TAGS.has(pool._status.tag)
+    ? `<span class="badge-info">${esc(pool._status.tag)}</span>`
+    : "";
+
+  // Session line
+  let sessionHtml;
+  if (pool._status.open && pool._status.slot)
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot open-now"></span>
+        <span>Session ${pool._status.slot.session}</span>
+        <span class="session-time">${esc(pool._status.slot.open)} – ${esc(pool._status.slot.close)}</span>
+      </div>`;
+  }
+  else if (pool._status.tag === "Weekly Cleansing")
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>Weekly Cleansing</span>
+        ${pool._status.cleansingUntil
+          ? `<span class="session-time">Reopens at ${esc(pool._status.cleansingUntil)}</span>`
+          : ""}
+      </div>`;
+  }
+  else if (pool._status.tag === "Session Break" && pool._status.nextOpen)
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>Session Break</span>
+        <span class="session-time">Reopens at ${esc(pool._status.nextOpen)}</span>
+      </div>`;
+  }
+  else if ((pool._status.tag === "Closed for the Night" || pool._status.tag === "Opening Soon" || pool._status.tag === "End of Day"))
+  {
+    const label = pool._status.nextOpenLabel || "Tomorrow from";
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>${esc(pool._status.tag)}</span>
+        ${pool._status.nextOpen
+          ? `<span class="session-time">${esc(label)} ${esc(pool._status.nextOpen)}</span>`
+          : ""}
+      </div>`;
+  }
+  else
+  {
+    sessionHtml = `
+      <div class="session-info">
+        <span class="session-dot closed-now"></span>
+        <span>${esc(pool._status.tag || "Closed")}</span>
+      </div>`;
+  }
+
+  // Facilities — if classes are filtered, only show matching ones in the card
+  let facilities = pool.facilities || [];
+  if (filterClasses.size > 0)
+    facilities = facilities.filter(f => filterClasses.has(String(f.class)));
+
+  const openFidSet  = new Set(pool._openFids);
+  const tcReasons   = pool._tcReasons || new Map();
+
+  const facHtml = facilities.map(f =>
+  {
+    const isOpen = pool._status.open && openFidSet.has(f.fid);
+    const tags   = [];
+    if (f.indoor) tags.push(`<span class="fac-tag indoor">Indoor</span>`);
+    if (f.heated) tags.push(`<span class="fac-tag heated">Heated</span>`);
+    const dim = f.dimensions && f.dimensions.length
+      ? `<span class="fac-dim">${f.dimensions.length}m</span>` : "";
+
+    return `
+      <div class="facility-row${isOpen ? "" : " fac-unavail"}">
+        <span class="facility-dot ${isOpen ? "fac-open" : "fac-closed"}"></span>
+        <span class="facility-name">${esc(f.name_en)}</span>
+        ${dim}${tags.join("")}
+      </div>`;
+  }).join("");
+
+  // Group tc-affected facilities by reason+until so each distinct closure gets one entry
+  // Map<"reason|||until" → { reason, until, names[] }>
+  const reasonGroups = new Map();
+  for (const f of (pool.facilities || []))
+  {
+    const entry = tcReasons.get(f.fid);
+    if (!entry) continue;
+    const key = entry.reason + "|||" + entry.until;
+    if (!reasonGroups.has(key)) reasonGroups.set(key, { reason: entry.reason, until: entry.until, names: [] });
+    reasonGroups.get(key).names.push(f.name_en);
+  }
+
+  let tcNoticeHtml = "";
+  if (reasonGroups.size > 0)
+  {
+    const lines = [];
+    reasonGroups.forEach(({ reason, until, names }) =>
+    {
+      lines.push(
+        `<div class="tc-notice-row">` +
+        `<span class="tc-notice-names">${esc(names.join(", "))}</span>` +
+        `<span class="tc-notice-reason">${esc(reason)}</span>` +
+        `<span class="tc-notice-until">${esc(until)}</span>` +
+        `</div>`
+      );
+    });
+    tcNoticeHtml =
+      `<div class="tc-notice-block">` +
+        `<div class="tc-notice-title"><span class="tc-notice-bang">❗</span>Temporary Closure</div>` +
+        lines.join("") +
+      `</div>`;
+  }
+
+  card.innerHTML = `
+    <div class="card-head">
+      <div class="card-names">
+        <div class="name-zh">
+          ${esc(pool.name_zh)}
+          ${pool.url
+            ? `<a class="card-official-link" href="${esc(pool.url)}" target="_blank" rel="noopener" aria-label="Official LCSD page">↗</a>`
+            : ""}
+        </div>
+        <div class="name-en">${esc(pool.name_en)}</div>
+        ${infoTag}
+      </div>
+      <div class="card-badges">
+        ${statusBadge}
+      </div>
+    </div>
+    ${sessionHtml}
+    <div>
+      <div class="facilities-label">Facilities</div>
+      <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
+    </div>
+    ${tcNoticeHtml}
+    ${pool.telephone
+      ? `<a class="card-phone" href="tel:+852${esc(pool.telephone)}">📞 ${esc(pool.telephone)}</a>`
+      : ""}
+    ${pool.url_maps || (pool.coordinates && pool.coordinates.latitude)
+      ? `<a class="card-address card-address-link"
+            href="${esc(pool.url_maps || `https://www.google.com/maps/dir/?api=1&destination=${pool.coordinates.latitude},${pool.coordinates.longitude}`)}"
+            target="_blank" rel="noopener">📍 ${esc(pool.address_en || pool.address_zh || "")}</a>`
+      : `<div class="card-address">📍 ${esc(pool.address_en || pool.address_zh || "")}</div>`
+    }`;
+
+  return card;
+}
+
+// ── Summary ───────────────────────────────────────────────
+function updateSummary()
+{
+  const open   = allPools.filter(p => p._status && p._status.open).length;
+  const closed = allPools.filter(p => p._status && !p._status.open).length;
+  document.getElementById("statTotal").textContent  = allPools.length || "—";
+  document.getElementById("statOpen").textContent   = open   || "—";
+  document.getElementById("statClosed").textContent = closed || "—";
+}
+
+// ── Skeletons ─────────────────────────────────────────────
+function renderSkeletons(n)
+{
+  const container = document.getElementById("regionsContainer");
+  container.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "pool-grid";
+
+  for (let i = 0; i < n; i++)
+  {
+    grid.innerHTML += `
+      <div class="skel-card">
+        <div class="skel" style="height:18px;width:55%"></div>
+        <div class="skel" style="height:12px;width:35%;margin-top:4px"></div>
+        <div class="skel" style="height:12px;width:80%;margin-top:10px"></div>
+        <div class="skel" style="height:12px;width:70%"></div>
+        <div class="skel" style="height:12px;width:60%"></div>
+        <div class="skel" style="height:11px;width:90%;margin-top:10px"></div>
+      </div>`;
+  }
+  container.appendChild(grid);
+}
+
+// ── Progress ──────────────────────────────────────────────
+function showProgress(done, total)
+{
+  document.getElementById("progressStrip").classList.add("visible");
+  document.getElementById("progressFill").style.width =
+    Math.round((done / total) * 100) + "%";
+}
+
+function hideProgress()
+{
+  document.getElementById("progressStrip").classList.remove("visible");
+}
+
+// ── Utility ───────────────────────────────────────────────
+function esc(str)
+{
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+</script>
+
+</body>
+</html>
