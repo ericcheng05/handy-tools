@@ -291,10 +291,11 @@ async function fetchPool(id)
     const res  = await fetch(POOL_URL(id));
     if (!res.ok) return null;
     const data = await res.json();
-    data._status = computePoolStatus(data);
-    const { openFids, tcReasons } = computeOpenFids(data);
-    data._openFids  = openFids;
-    data._tcReasons = tcReasons;
+    data._status     = computePoolStatus(data);
+    const { openFids, tcReasons, upcomingTcs } = computeOpenFids(data);
+    data._openFids    = openFids;
+    data._tcReasons   = tcReasons;
+    data._upcomingTcs = upcomingTcs;
     return data;
   }
   catch (e) { return null; }
@@ -413,7 +414,12 @@ function computePoolStatus(pool)
 
     if (cleansingApplies)
     {
-      const CLEANSING_START = 10;   // 10:00 HKT
+      const CLEANSING_START    = 10;     // 10:00 HKT
+      const CLEANSING_START_STR = "10:00";
+
+      const slot1 = sessions
+        .flatMap(s => s.slots || [])
+        .find(sl => sl.session === 1);
 
       const slot2 = sessions
         .flatMap(s => s.slots || [])
@@ -424,6 +430,15 @@ function computePoolStatus(pool)
         .flatMap(s => s.slots || [])
         .find(sl => sl.session === 3);
 
+      // Before cleansing starts — pool is open but warn that cleansing begins at 10:00
+      if (slot1 && TODAY_H >= toH(slot1.open) && TODAY_H < CLEANSING_START)
+      {
+        // Show actual session 1 open time but cap the displayed close at 10:00
+        const displaySlot = { session: 1, open: slot1.open, close: CLEANSING_START_STR };
+        return { open: true, tag: "Weekly Cleansing Day", slot: displaySlot };
+      }
+
+      // During cleansing window
       if (slot2 && TODAY_H >= CLEANSING_START && TODAY_H < toH(slot2.close))
         return { open: false, tag: "Weekly Cleansing", cleansingUntil: slot3 ? slot3.open : null };
     }
@@ -449,14 +464,17 @@ function computePoolStatus(pool)
 
   // Between sessions — a future slot exists today.
   // Always "Session Break" since a real session is still coming regardless of time of day.
+  // Note: the weekly cleansing check above already fires and returns early during the
+  // cleansing window (10:00–end of session 2), so by the time we reach this point the
+  // nextSlot open time is guaranteed to be outside the cleansing window.
   const nextSlot = allTodaySlots.find(sl => toH(sl.open) > TODAY_H);
   if (nextSlot)
     return { open: false, tag: "Session Break", nextOpen: nextSlot.open };
 
   // All slots have passed for today — end of day.
   // Look for first valid opening tomorrow to show reopen time.
-  // Before midnight: "Tomorrow from HH:MM"
-  // From midnight until first session opens: "Opening Soon · HH:MM"
+  // tomorrowFirst uses the raw slot open time (e.g. 06:30). On cleansing day, session 1
+  // still opens at 06:30 before cleansing starts at 10:00, so the shown time is accurate.
   const tomorrowDow = (TODAY_DOW + 1) % 7;
   const tomorrowSessions = (pool.schedule.sessions || []).filter(s =>
     s.days.includes(tomorrowDow) && inDateRange(s.valid_from, s.valid_until)
@@ -491,13 +509,31 @@ function computeOpenFids(pool)
 
   // tcClosed maps fid → { reason, until } for facilities under a current temp closure
   const tcClosed = new Map();
+  // upcomingTcs collects closures starting later today — for pre-warning display
+  const upcomingTcs = [];
+  const todayPrefix = nowHkt.slice(0, 10);   // "YYYY-MM-DD"
+
   for (const tc of (pool.schedule.temporary_closures || []))
   {
-    if (nowHkt >= tc.start.slice(0, 16) && nowHkt <= tc.end.slice(0, 16))
+    const tcStart = tc.start.slice(0, 16);
+    const tcEnd   = tc.end.slice(0, 16);
+
+    if (nowHkt >= tcStart && nowHkt <= tcEnd)
     {
+      // Active closure
       const reason = tc.reason_en || "Temporary Closure";
-      const until  = "Until " + tc.end.slice(0, 16).replace("T", " ");
+      const until  = "Until " + tcEnd.replace("T", " ");
       (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, { reason, until }));
+    }
+    else if (tcStart > nowHkt && tcStart.slice(0, 10) === todayPrefix)
+    {
+      // Upcoming closure today — collect for pre-warning
+      upcomingTcs.push({
+        from:        tc.start.slice(11, 16),    // "HH:MM"
+        until:       tc.end.slice(11, 16),      // "HH:MM"
+        reason:      tc.reason_en || "Temporary Closure",
+        facility_ids: tc.facility_ids
+      });
     }
   }
 
@@ -539,7 +575,7 @@ function computeOpenFids(pool)
     return sessionOpen.has(fid);
   });
 
-  return { openFids, tcReasons: tcClosed };
+  return { openFids, tcReasons: tcClosed, upcomingTcs };
 }
 
 // ── Render ────────────────────────────────────────────────
@@ -608,7 +644,7 @@ function buildPoolCard(pool, idx)
   // Tags that are already fully described by the session line text (Weekly Cleansing,
   // Session Break, End of Day, No Session Today) are suppressed here to avoid repetition.
   const SESSION_LINE_TAGS = new Set([
-    "Weekly Cleansing", "Session Break", "Opening Soon",
+    "Weekly Cleansing", "Weekly Cleansing Day", "Session Break", "Opening Soon",
     "End of Day", "No Session Today", "Annual Maintenance"
   ]);
   const infoTag = pool._status.tag && !SESSION_LINE_TAGS.has(pool._status.tag)
@@ -725,6 +761,33 @@ function buildPoolCard(pool, idx)
       `</div>`;
   }
 
+  // Upcoming temp closure notice — closures starting later today, shown dimmed
+  const upcomingTcs = pool._upcomingTcs || [];
+  let upcomingTcHtml = "";
+  if (upcomingTcs.length > 0)
+  {
+    const lines = upcomingTcs.map(tc =>
+    {
+      const facilityNames = tc.facility_ids === null
+        ? "All facilities"
+        : (pool.facilities || [])
+            .filter(f => tc.facility_ids.includes(f.fid))
+            .map(f => f.name_en)
+            .join(", ");
+      return `
+        <div class="tc-upcoming-row">
+          <span class="tc-upcoming-names">${esc(facilityNames)}</span>
+          <span class="tc-upcoming-reason">${esc(tc.reason)}</span>
+          <span class="tc-upcoming-time">${esc(tc.from)} – ${esc(tc.until)}</span>
+        </div>`;
+    }).join("");
+    upcomingTcHtml =
+      `<div class="tc-notice-block tc-notice-upcoming">` +
+        `<div class="tc-notice-title"><span class="tc-notice-bang">🕐</span>Upcoming Closure Today</div>` +
+        lines +
+      `</div>`;
+  }
+
   card.innerHTML = `
     <div class="card-head">
       <div class="card-names">
@@ -747,6 +810,7 @@ function buildPoolCard(pool, idx)
       <div class="facilities-list">${facHtml || '<span style="font-size:11px;color:var(--dim)">—</span>'}</div>
     </div>
     ${tcNoticeHtml}
+    ${upcomingTcHtml}
     ${pool.telephone
       ? `<a class="card-phone" href="tel:+852${esc(pool.telephone)}">📞 ${esc(pool.telephone)}</a>`
       : ""}
