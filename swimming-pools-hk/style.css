@@ -631,6 +631,14 @@ body::after
   border-radius: 8px;
 }
 
+/* Upcoming closure — same structure but dimmed */
+.tc-notice-upcoming
+{
+  background: var(--bg2);
+  border-color: var(--border);
+  opacity: 0.75;
+}
+
 .tc-notice-title
 {
   display: flex;
@@ -677,6 +685,39 @@ body::after
 }
 
 .tc-notice-until
+{
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+.tc-upcoming-row
+{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 22px;
+}
+
+.tc-upcoming-names
+{
+  font-family: var(--font-mono);
+  font-size: 0.656rem;
+  font-weight: 500;
+  color: var(--text-sec);
+  line-height: 1.4;
+}
+
+.tc-upcoming-reason
+{
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.tc-upcoming-time
 {
   font-family: var(--font-mono);
   font-size: 0.625rem;
