@@ -430,12 +430,23 @@ function computePoolStatus(pool)
         .flatMap(s => s.slots || [])
         .find(sl => sl.session === 3);
 
-      // Before cleansing starts — pool is open but warn that cleansing begins at 10:00
+      // Before cleansing starts — pool is open but warn that cleansing begins at 10:00.
+      // Also layer the No Admission / Session Ends in 60 Minutes tags based on time to 10:00.
       if (slot1 && TODAY_H >= toH(slot1.open) && TODAY_H < CLEANSING_START)
       {
+        const minsToClean = (CLEANSING_START - TODAY_H) * 60;
+        let admissionTag = null;
+        if (minsToClean <= 30)       admissionTag = "No Admission";
+        else if (minsToClean <= 60)  admissionTag = "Session Ends in 60 Minutes";
+
         // Show actual session 1 open time but cap the displayed close at 10:00
         const displaySlot = { session: 1, open: slot1.open, close: CLEANSING_START_STR };
-        return { open: true, tag: "Weekly Cleansing Day", slot: displaySlot };
+        return {
+          open:         true,
+          tag:          "Weekly Cleansing Day",
+          secondaryTag: admissionTag,
+          slot:         displaySlot
+        };
       }
 
       // During cleansing window
@@ -644,11 +655,15 @@ function buildPoolCard(pool, idx)
   // Tags that are already fully described by the session line text (Weekly Cleansing,
   // Session Break, End of Day, No Session Today) are suppressed here to avoid repetition.
   const SESSION_LINE_TAGS = new Set([
-    "Weekly Cleansing", "Weekly Cleansing Day", "Session Break", "Opening Soon",
+    "Weekly Cleansing", "Session Break", "Opening Soon",
     "End of Day", "No Session Today", "Annual Maintenance"
   ]);
   const infoTag = pool._status.tag && !SESSION_LINE_TAGS.has(pool._status.tag)
     ? `<span class="badge-info">${esc(pool._status.tag)}</span>`
+    : "";
+
+  const secondaryTag = pool._status.secondaryTag
+    ? `<span class="badge-info">${esc(pool._status.secondaryTag)}</span>`
     : "";
 
   // Session line
@@ -799,6 +814,7 @@ function buildPoolCard(pool, idx)
         </div>
         <div class="name-en">${esc(pool.name_en)}</div>
         ${infoTag}
+        ${secondaryTag}
       </div>
       <div class="card-badges">
         ${statusBadge}
