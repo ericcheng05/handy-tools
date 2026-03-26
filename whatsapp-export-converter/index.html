@@ -8,7 +8,11 @@
 </head>
 <body>
 
-<div class="wa-converter">
+<nav class="back-nav">
+  <a class="back-link" href="../">← myexample.work</a>
+</nav>
+
+<main class="wa-converter">
 
   <!-- ── Converter Card ── -->
   <div class="wa-converter-card">
@@ -48,7 +52,7 @@
     <iframe class="wa-preview-frame" id="preview-frame" sandbox="allow-same-origin"></iframe>
   </div>
 
-</div>
+</main>
 
 <script>
 /* ============================================================
@@ -425,7 +429,6 @@ ${bodyHtml}
 function getWaChatCss()
 {
   return `
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap');
 :root{
   --wa-green:#25D366;--wa-teal:#128C7E;--wa-dark:#075E54;--wa-blue:#53BDEB;
   --bg:#ECE5DD;--bubble-me:#DCF8C6;--bubble-other:#FFFFFF;
@@ -435,7 +438,7 @@ function getWaChatCss()
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{
-  font-family:'Nunito','Noto Sans HK',sans-serif;
+  font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
   background:var(--bg);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpath fill='none' stroke='%23c8b8a2' stroke-width='0.4' opacity='0.45' d='M10 10h8v8h-8zM28 10h8v8h-8zM46 10h8v8h-8zM64 10h8v8h-8zM19 19h8v8h-8zM37 19h8v8h-8zM55 19h8v8h-8zM10 28h8v8h-8zM28 28h8v8h-8zM46 28h8v8h-8zM64 28h8v8h-8zM19 37h8v8h-8zM37 37h8v8h-8zM55 37h8v8h-8zM10 46h8v8h-8zM28 46h8v8h-8zM46 46h8v8h-8zM64 46h8v8h-8zM19 55h8v8h-8zM37 55h8v8h-8zM55 55h8v8h-8zM10 64h8v8h-8zM28 64h8v8h-8zM46 64h8v8h-8zM64 64h8v8h-8z'/%3E%3C/svg%3E");
   min-height:100vh;

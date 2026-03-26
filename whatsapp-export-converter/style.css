@@ -3,7 +3,7 @@
    style.css  ·  used by index.html only
    ================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
 
 /* ── Design tokens ── */
 :root
@@ -42,7 +42,7 @@
 /* ── Body ── */
 body
 {
-  font-family: 'Nunito', 'Noto Sans HK', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -182,7 +182,7 @@ body
   border-radius: 10px;
   padding: 7px 12px;
   font-size: 13px;
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   color: var(--text-muted);
   cursor: pointer;
   transition: border-color .18s, background .18s, color .18s, transform .12s;
@@ -345,6 +345,31 @@ body
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+
+/* ── Back nav ── */
+.back-nav
+{
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 16px 24px;
+  z-index: 10;
+}
+
+.back-link
+{
+  font-family: 'DM Mono', monospace;
+  font-size: 0.688rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.back-link:hover { color: var(--wa-green); }
 
 /* ── Responsive ── */
 @media (max-width: 600px)

@@ -521,3 +521,26 @@ main {
   main   { padding: 12px 16px 52px; grid-template-columns: 1fr; }
   .filter-panel { width: 260px; }
 }
+
+/* ── Back nav ────────────────────────────────────────────── */
+.back-nav
+{
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
+}
+
+.back-link
+{
+  font-family: 'DM Mono', monospace;
+  font-size: 0.688rem;
+  color: var(--muted);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.back-link:hover { color: var(--green); }

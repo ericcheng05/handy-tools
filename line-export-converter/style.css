@@ -340,6 +340,31 @@ body
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+/* ── Back nav ── */
+.back-nav
+{
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 16px 24px;
+  z-index: 10;
+}
+
+.back-link
+{
+  font-family: 'DM Mono', monospace;
+  font-size: 0.688rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.back-link:hover { color: var(--line-green); }
+
 /* ── Responsive ── */
 @media (max-width: 600px)
 {
