@@ -527,7 +527,10 @@ main {
 {
   max-width: 1140px;
   margin: 0 auto;
-  padding: 24px 24px 0;
+  padding: 28px 24px 0;
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+  animation-delay: 0.02s;
 }
 
 .back-link

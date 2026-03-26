@@ -349,11 +349,10 @@ body
 /* ── Back nav ── */
 .back-nav
 {
-  position: fixed;
-  top: 0;
-  left: 0;
-  padding: 16px 24px;
-  z-index: 10;
+  padding: 28px 28px 0;
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+  animation-delay: 0.02s;
 }
 
 .back-link
@@ -370,6 +369,12 @@ body
 }
 
 .back-link:hover { color: var(--wa-green); }
+
+@keyframes fadeUp
+{
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* ── Responsive ── */
 @media (max-width: 600px)
