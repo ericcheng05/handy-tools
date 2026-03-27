@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evernote Converter — myexample.work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+HK:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="back-nav">
+  <a class="back-link" href="../">← myexample.work</a>
+</nav>
+
+<main class="ev-converter">
+
+  <!-- ── Converter Card ── -->
+  <div class="ev-card">
+    <h2><span class="icon">📓</span> Evernote Converter</h2>
+    <p>Upload an <code>.enex</code> file exported from <strong>Evernote</strong>. Each note is converted to its own <code>.md</code> Markdown file with YAML frontmatter — packaged into a single <code>.zip</code> download. Everything runs entirely in your browser; nothing is uploaded.</p>
+
+    <!-- Drop zone -->
+    <label class="ev-dropzone" id="dropzone">
+      <span class="dz-icon">📂</span>
+      <span class="dz-label" id="dz-label">Drop your .enex file here</span>
+      <span class="dz-sub">or click to browse · processed entirely in your browser</span>
+      <input type="file" id="file-input" accept=".enex">
+    </label>
+
+    <div class="ev-status" id="status"></div>
+  </div>
+
+  <!-- ── Preview Panel ── -->
+  <div class="ev-preview-panel" id="preview-panel">
+    <div class="ev-preview-toolbar">
+      <span id="preview-label">Preview</span>
+      <button class="ev-btn-sm" id="download-btn">⬇ Download notes.zip</button>
+    </div>
+    <pre class="ev-preview-pre" id="preview-pre"></pre>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   Evernote ENEX → Markdown Converter
+   Parses .enex XML, converts ENML to Markdown per note,
+   and packages all .md files into a store-mode ZIP archive.
+   No external libraries — entirely client-side.
+   ============================================================ */
+
+'use strict';
+
+/* ── DOM refs ── */
+const dropzone     = document.getElementById('dropzone');
+const fileInput    = document.getElementById('file-input');
+const dzLabel      = document.getElementById('dz-label');
+const statusEl     = document.getElementById('status');
+const previewPanel = document.getElementById('preview-panel');
+const previewPre   = document.getElementById('preview-pre');
+const previewLabel = document.getElementById('preview-label');
+const downloadBtn  = document.getElementById('download-btn');
+
+/* State */
+let noteFiles = [];   // [{name, bytes: Uint8Array}]
+
+/* ── Utilities ── */
+
+function setStatus(msg, cls)
+{
+  statusEl.textContent = msg;
+  statusEl.className   = 'ev-status' + (cls ? ' ' + cls : '');
+}
+
+/* ── ENEX timestamp → ISO date ── */
+function parseTimestamp(str)
+{
+  if (!str) return '';
+  const m = str.match(/^(\d{4})(\d{2})(\d{2})T/);
+  if (!m) return '';
+  return m[1] + '-' + m[2] + '-' + m[3];
+}
+
+/* ── Filename sanitiser ── */
+function sanitiseFilename(title, seen)
+{
+  let base = (title || 'untitled')
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .trim()
+    .slice(0, 80)
+    || 'untitled';
+
+  let name = base + '.md';
+  if (!seen.has(name))
+  {
+    seen.add(name);
+    return name;
+  }
+
+  let n = 2;
+  while (seen.has(base + ' (' + n + ').md')) n++;
+  name = base + ' (' + n + ').md';
+  seen.add(name);
+  return name;
+}
+
+/* ── YAML value escaper ── */
+function yamlValue(str)
+{
+  if (/[:#\[\]{},|>&!'"@`\n]/.test(str) || str.startsWith(' ') || str.endsWith(' '))
+    return '"' + str.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  return str;
+}
+
+/* ── ENML → Markdown ── */
+
+function processChildren(node)
+{
+  let out = '';
+  for (let i = 0; i < node.childNodes.length; i++)
+    out += nodeToMd(node.childNodes[i]);
+  return out;
+}
+
+function buildTable(tableNode)
+{
+  const rows = Array.from(tableNode.querySelectorAll('tr'));
+  if (!rows.length) return '';
+
+  function getCells(trEl)
+  {
+    return Array.from(trEl.querySelectorAll('th, td'))
+      .map(c => c.textContent.trim().replace(/\|/g, '\\|'));
+  }
+
+  const headerCells = getCells(rows[0]);
+  const colCount    = headerCells.length;
+  if (!colCount) return '';
+
+  const header = '| ' + headerCells.join(' | ') + ' |';
+  const sep    = '| ' + Array(colCount).fill('---').join(' | ') + ' |';
+  const body   = rows.slice(1).map(r =>
+  {
+    const cells = getCells(r);
+    while (cells.length < colCount) cells.push('');
+    return '| ' + cells.slice(0, colCount).join(' | ') + ' |';
+  }).join('\n');
+
+  return '\n' + header + '\n' + sep + (body ? '\n' + body : '') + '\n\n';
+}
+
+function nodeToMd(node)
+{
+  /* Text node */
+  if (node.nodeType === 3) return node.textContent;
+  /* Skip non-element nodes */
+  if (node.nodeType !== 1) return '';
+
+  const tag = node.tagName.toLowerCase();
+
+  switch (tag)
+  {
+    /* ── Passthrough containers ── */
+    case 'en-note':
+    case 'body':
+    case 'span':
+    case 'font':
+    case 'tbody':
+    case 'thead':
+    case 'tfoot':
+    case 'colgroup':
+    case 'col':
+      return processChildren(node);
+
+    /* ── Headings ── */
+    case 'h1': return '\n# '      + processChildren(node).trim() + '\n\n';
+    case 'h2': return '\n## '     + processChildren(node).trim() + '\n\n';
+    case 'h3': return '\n### '    + processChildren(node).trim() + '\n\n';
+    case 'h4': return '\n#### '   + processChildren(node).trim() + '\n\n';
+    case 'h5': return '\n##### '  + processChildren(node).trim() + '\n\n';
+    case 'h6': return '\n###### ' + processChildren(node).trim() + '\n\n';
+
+    /* ── Inline formatting ── */
+    case 'b':
+    case 'strong':
+    {
+      const inner = processChildren(node).trim();
+      return inner ? '**' + inner + '**' : '';
+    }
+
+    case 'i':
+    case 'em':
+    {
+      const inner = processChildren(node).trim();
+      return inner ? '*' + inner + '*' : '';
+    }
+
+    case 's':
+    case 'del':
+    case 'strike':
+    {
+      const inner = processChildren(node).trim();
+      return inner ? '~~' + inner + '~~' : '';
+    }
+
+    case 'u':
+    {
+      /* Markdown has no underline — render as plain text */
+      return processChildren(node);
+    }
+
+    case 'a':
+    {
+      const href  = node.getAttribute('href') || '';
+      const inner = processChildren(node).trim();
+      if (!href) return inner;
+      return '[' + inner + '](' + href + ')';
+    }
+
+    /* ── Block elements ── */
+    case 'br':
+      return '\n';
+
+    case 'hr':
+      return '\n\n---\n\n';
+
+    case 'div':
+    case 'p':
+    {
+      const inner = processChildren(node);
+      if (!inner.trim()) return '\n';
+      return inner.trimEnd() + '\n';
+    }
+
+    /* ── Lists ── */
+    case 'ul':
+    {
+      let result = '\n';
+      for (let i = 0; i < node.childNodes.length; i++)
+      {
+        const child = node.childNodes[i];
+        if (child.nodeType === 1 && child.tagName.toLowerCase() === 'li')
+        {
+          const content = processChildren(child).trim();
+          result += '- ' + content + '\n';
+        }
+      }
+      return result + '\n';
+    }
+
+    case 'ol':
+    {
+      let result = '\n';
+      let n = 1;
+      for (let i = 0; i < node.childNodes.length; i++)
+      {
+        const child = node.childNodes[i];
+        if (child.nodeType === 1 && child.tagName.toLowerCase() === 'li')
+        {
+          const content = processChildren(child).trim();
+          result += n + '. ' + content + '\n';
+          n++;
+        }
+      }
+      return result + '\n';
+    }
+
+    case 'li':
+      return '- ' + processChildren(node).trim() + '\n';
+
+    /* ── Code ── */
+    case 'code':
+    {
+      if (node.parentElement && node.parentElement.tagName.toLowerCase() === 'pre')
+        return node.textContent;
+      return '`' + node.textContent + '`';
+    }
+
+    case 'pre':
+    {
+      const codeEl = node.querySelector('code');
+      const raw    = codeEl ? codeEl.textContent : node.textContent;
+      let   lang   = '';
+      if (codeEl)
+      {
+        const m = (codeEl.className || '').match(/language-(\w+)/);
+        if (m) lang = m[1];
+      }
+      return '\n```' + lang + '\n' + raw + '\n```\n\n';
+    }
+
+    /* ── Blockquote ── */
+    case 'blockquote':
+    {
+      const inner = processChildren(node).trim();
+      return inner.split('\n').map(l => '> ' + l).join('\n') + '\n\n';
+    }
+
+    /* ── Table ── */
+    case 'table':
+      return buildTable(node);
+
+    /* ── Evernote-specific ── */
+    case 'en-todo':
+      return node.getAttribute('checked') === 'true' ? '- [x] ' : '- [ ] ';
+
+    case 'en-media':
+    {
+      const hash  = node.getAttribute('hash') || '';
+      const label = hash ? 'attachment:' + hash.slice(0, 8) : 'attachment';
+      return '[' + label + ']\n';
+    }
+
+    /* ── Skip invisible / structural ── */
+    case 'head':
+    case 'style':
+    case 'script':
+    case 'meta':
+    case 'link':
+      return '';
+
+    default:
+      return processChildren(node);
+  }
+}
+
+function enmlToMarkdown(enmlString)
+{
+  if (!enmlString || !enmlString.trim()) return '';
+
+  const parser = new DOMParser();
+  /* Parse as HTML — avoids DTD fetch errors from Evernote's DOCTYPE */
+  const doc  = parser.parseFromString(enmlString, 'text/html');
+  const root = doc.querySelector('en-note') || doc.body;
+  if (!root) return '';
+
+  let md = nodeToMd(root);
+  /* Collapse excess blank lines */
+  md = md.replace(/\n{3,}/g, '\n\n');
+  return md.trim();
+}
+
+/* ── ENEX XML Parser ── */
+function parseEnex(xmlText)
+{
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(xmlText, 'application/xml');
+
+  const parseErr = doc.querySelector('parsererror');
+  if (parseErr)
+    throw new Error('XML parse error: ' + parseErr.textContent.slice(0, 120).trim());
+
+  return Array.from(doc.querySelectorAll('note')).map(noteEl =>
+  {
+    const title   = noteEl.querySelector('title')?.textContent?.trim() || 'Untitled';
+    const created = parseTimestamp(noteEl.querySelector('created')?.textContent?.trim() || '');
+    const updated = parseTimestamp(noteEl.querySelector('updated')?.textContent?.trim() || '');
+    const tags    = Array.from(noteEl.querySelectorAll('tag'))
+      .map(t => t.textContent.trim())
+      .filter(Boolean);
+    const attrs     = noteEl.querySelector('note-attributes');
+    const sourceUrl = attrs?.querySelector('source-url')?.textContent?.trim() || '';
+    const contentEl = noteEl.querySelector('content');
+    const content   = contentEl ? contentEl.textContent : '';
+
+    return { title, created, updated, tags, sourceUrl, content };
+  });
+}
+
+/* ── Build one note's .md content ── */
+function buildNoteFile(note)
+{
+  let fm = '---\n';
+  fm += 'title: '   + yamlValue(note.title) + '\n';
+  if (note.created) fm += 'created: ' + note.created + '\n';
+  if (note.updated && note.updated !== note.created) fm += 'updated: ' + note.updated + '\n';
+  if (note.tags.length) fm += 'tags: [' + note.tags.map(yamlValue).join(', ') + ']\n';
+  if (note.sourceUrl)   fm += 'source: ' + note.sourceUrl + '\n';
+  fm += '---';
+
+  const body = enmlToMarkdown(note.content) || '_No content_';
+  return fm + '\n\n# ' + note.title + '\n\n' + body + '\n';
+}
+
+/* ── CRC-32 ── */
+const CRC32_TABLE = (() =>
+{
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++)
+  {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c;
+  }
+  return t;
+})();
+
+function crc32(bytes)
+{
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++)
+    crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function le16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+function le32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >>> 24) & 0xFF]; }
+
+/* ── ZIP Writer (store mode — no compression) ── */
+function buildZip(files)
+{
+  /* files: [{name: string, bytes: Uint8Array}] */
+  const enc     = new TextEncoder();
+  const entries = [];
+  let   offset  = 0;
+
+  /* DOS timestamp: 2024-01-01 00:00:00 */
+  const DOS_DATE = 0x5A21;
+  const DOS_TIME = 0x0000;
+
+  /* Build local headers + accumulate central dir info */
+  for (const file of files)
+  {
+    const nameBytes = enc.encode(file.name);
+    const data      = file.bytes;
+    const crc       = crc32(data);
+    const size      = data.length;
+
+    const localHeader = new Uint8Array([
+      0x50, 0x4B, 0x03, 0x04,    /* local file header signature */
+      0x14, 0x00,                 /* version needed: 2.0 */
+      0x00, 0x00,                 /* general purpose bit flag */
+      0x00, 0x00,                 /* compression: store */
+      ...le16(DOS_TIME),
+      ...le16(DOS_DATE),
+      ...le32(crc),
+      ...le32(size),              /* compressed size */
+      ...le32(size),              /* uncompressed size */
+      ...le16(nameBytes.length),
+      0x00, 0x00,                 /* extra field length */
+      ...nameBytes,
+    ]);
+
+    entries.push({ localHeader, data, nameBytes, crc, size, offset });
+    offset += localHeader.length + size;
+  }
+
+  const centralDirOffset = offset;
+  const centralDirs      = [];
+
+  for (const e of entries)
+  {
+    const cd = new Uint8Array([
+      0x50, 0x4B, 0x01, 0x02,    /* central directory signature */
+      0x14, 0x00,                 /* version made by */
+      0x14, 0x00,                 /* version needed */
+      0x00, 0x00,                 /* general purpose bit flag */
+      0x00, 0x00,                 /* compression: store */
+      ...le16(DOS_TIME),
+      ...le16(DOS_DATE),
+      ...le32(e.crc),
+      ...le32(e.size),
+      ...le32(e.size),
+      ...le16(e.nameBytes.length),
+      0x00, 0x00,                 /* extra field length */
+      0x00, 0x00,                 /* file comment length */
+      0x00, 0x00,                 /* disk number start */
+      0x00, 0x00,                 /* internal file attributes */
+      0x00, 0x00, 0x00, 0x00,    /* external file attributes */
+      ...le32(e.offset),          /* local header offset */
+      ...e.nameBytes,
+    ]);
+    centralDirs.push(cd);
+    offset += cd.length;
+  }
+
+  const centralDirSize = offset - centralDirOffset;
+
+  const eocd = new Uint8Array([
+    0x50, 0x4B, 0x05, 0x06,      /* end of central directory signature */
+    0x00, 0x00,                   /* disk number */
+    0x00, 0x00,                   /* disk with central directory */
+    ...le16(entries.length),      /* entries on this disk */
+    ...le16(entries.length),      /* total entries */
+    ...le32(centralDirSize),
+    ...le32(centralDirOffset),
+    0x00, 0x00,                   /* comment length */
+  ]);
+
+  /* Concatenate all parts */
+  const totalSize = offset + eocd.length;
+  const out       = new Uint8Array(totalSize);
+  let   pos       = 0;
+
+  for (const e of entries)
+  {
+    out.set(e.localHeader, pos); pos += e.localHeader.length;
+    out.set(e.data,        pos); pos += e.data.length;
+  }
+  for (const cd of centralDirs)
+  {
+    out.set(cd, pos); pos += cd.length;
+  }
+  out.set(eocd, pos);
+
+  return out;
+}
+
+/* ── Show preview ── */
+function showPreview(files)
+{
+  const count = files.length;
+  const word  = count === 1 ? 'note' : 'notes';
+
+  /* File list summary */
+  const names     = files.map(f => f.name);
+  const listLines = names.slice(0, 6).map(n => '  · ' + n);
+  if (names.length > 6) listLines.push('  · … and ' + (names.length - 6) + ' more');
+
+  /* First note as sample */
+  const dec    = new TextDecoder();
+  let   sample = dec.decode(files[0].bytes);
+  if (sample.length > 50000)
+    sample = sample.slice(0, 50000) + '\n\n… (preview truncated — full content in download)';
+
+  const divider = '─'.repeat(48);
+
+  previewLabel.textContent = count + ' ' + word + ' ready → notes.zip';
+  previewPre.textContent   =
+    'Contents:\n' + listLines.join('\n') +
+    '\n\n' + divider + '\n\nSample — ' + files[0].name + ':\n\n' + sample;
+
+  previewPanel.classList.add('visible');
+  setTimeout(() => previewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+/* ── Handle file ── */
+function handleFile(file)
+{
+  if (!file.name.toLowerCase().endsWith('.enex'))
+  {
+    setStatus('Please select a .enex file exported from Evernote.', 'error');
+    return;
+  }
+
+  setStatus('Reading file…');
+
+  const reader = new FileReader();
+
+  reader.onload = e =>
+  {
+    try
+    {
+      const notes = parseEnex(e.target.result);
+
+      if (!notes.length)
+      {
+        setStatus('No notes found in this file.', 'error');
+        return;
+      }
+
+      dzLabel.textContent = '✅  ' + file.name;
+      setStatus('Found ' + notes.length + ' note' + (notes.length === 1 ? '' : 's') + ' — converting…', 'ok');
+
+      const seen = new Set();
+      const enc  = new TextEncoder();
+
+      const files = notes.map(note =>
+      {
+        const name    = sanitiseFilename(note.title, seen);
+        const content = buildNoteFile(note);
+        const bytes   = enc.encode(content);
+        return { name, bytes };
+      });
+
+      noteFiles = files;
+
+      const word = notes.length === 1 ? 'note' : 'notes';
+      setStatus('✓ Converted ' + notes.length + ' ' + word + ' from "' + file.name + '"', 'ok');
+
+      showPreview(files);
+    }
+    catch (err)
+    {
+      setStatus('Error: ' + err.message, 'error');
+      console.error(err);
+    }
+  };
+
+  reader.onerror = () => setStatus('Could not read file.', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+/* ── Drag & drop ── */
+dropzone.addEventListener('dragover', e =>
+{
+  e.preventDefault();
+  dropzone.classList.add('drag-over');
+});
+
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+
+dropzone.addEventListener('drop', e =>
+{
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+fileInput.addEventListener('change', () =>
+{
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+/* ── Download ── */
+downloadBtn.addEventListener('click', () =>
+{
+  if (!noteFiles.length) return;
+  const zipBytes = buildZip(noteFiles);
+  const blob     = new Blob([zipBytes], { type: 'application/zip' });
+  const a        = document.createElement('a');
+  a.href         = URL.createObjectURL(blob);
+  a.download     = 'notes.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+
+</body>
+</html>

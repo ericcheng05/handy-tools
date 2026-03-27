@@ -1,0 +1,284 @@
+/* ================================================
+   Evernote ENEX Converter — Converter UI Stylesheet
+   style.css  ·  used by index.html only
+   ================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+HK:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── Design tokens ── */
+:root
+{
+  --bg:              #f5f3ee;
+  --surface:         #ffffff;
+  --surface2:        #f0ede6;
+  --border:          rgba(0,0,0,0.08);
+  --border-h:        rgba(0,0,0,0.18);
+  --text:            #1a1814;
+  --text-sec:        #3d3a33;
+  --muted:           #7a7568;
+  --dim:             #a8a399;
+  --font-display:    'Plus Jakarta Sans', sans-serif;
+  --font-body:       'Noto Sans HK', sans-serif;
+  --font-mono:       'DM Mono', monospace;
+
+  /* Evernote brand green */
+  --ev-green:        #00A82D;
+  --ev-green-dim:    #007820;
+  --ev-green-bg:     rgba(0,168,45,0.07);
+  --ev-green-glow:   rgba(0,168,45,0.18);
+  --ev-green-border: rgba(0,168,45,0.22);
+
+  --shadow:          0 2px 12px rgba(0,0,0,0.07), 0 0 0 1px var(--border);
+  --shadow-hover:    0 8px 28px rgba(0,0,0,0.13), 0 0 0 1px var(--border-h);
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Body ── */
+body
+{
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.065) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ══════════════════════════════════════
+   CONVERTER UI
+══════════════════════════════════════ */
+.ev-converter
+{
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 24px 96px;
+  gap: 28px;
+}
+
+/* ── Converter card ── */
+.ev-card
+{
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 40px;
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+  animation-delay: 0.08s;
+}
+
+.ev-card h2
+{
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.ev-card h2 .icon
+{
+  background: linear-gradient(135deg, var(--ev-green) 0%, var(--ev-green-dim) 100%);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.ev-card p
+{
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.ev-card p code
+{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--ev-green-dim);
+  border: 1px solid var(--border);
+}
+
+/* ── Drop zone ── */
+.ev-dropzone
+{
+  border: 2px dashed rgba(0,0,0,0.14);
+  border-radius: 14px;
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+}
+
+.ev-dropzone:hover,
+.ev-dropzone.drag-over
+{
+  border-color: var(--ev-green);
+  background: var(--ev-green-bg);
+}
+
+.ev-dropzone .dz-icon  { font-size: 36px; }
+
+.ev-dropzone .dz-label
+{
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ev-dropzone .dz-sub
+{
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.ev-dropzone input[type='file'] { display: none; }
+
+/* ── Status bar ── */
+.ev-status
+{
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  min-height: 20px;
+}
+
+.ev-status.ok    { color: var(--ev-green); }
+.ev-status.error { color: #c0392b; }
+
+/* ── Preview panel ── */
+.ev-preview-panel
+{
+  width: 100%;
+  max-width: 800px;
+  display: none;
+}
+
+.ev-preview-panel.visible
+{
+  display: block;
+  animation: fadeUp 0.35s ease forwards;
+}
+
+.ev-preview-toolbar
+{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--ev-green-dim) 0%, var(--ev-green) 100%);
+  border-radius: 14px 14px 0 0;
+  gap: 12px;
+}
+
+.ev-preview-toolbar span
+{
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+}
+
+.ev-btn-sm
+{
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: background .2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ev-btn-sm:hover { background: rgba(255,255,255,0.32); }
+
+.ev-preview-pre
+{
+  margin: 0;
+  padding: 24px;
+  background: #1a1814;
+  color: #c8bfad;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.75;
+  border-radius: 0 0 14px 14px;
+  overflow: auto;
+  max-height: 540px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: var(--shadow);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ev-green-border); border-radius: 3px; }
+
+/* ── Back nav ── */
+.back-nav
+{
+  padding: 28px 28px 0;
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+  animation-delay: 0.02s;
+}
+
+.back-link
+{
+  font-family: var(--font-mono);
+  font-size: 0.688rem;
+  color: var(--muted);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.back-link:hover { color: var(--ev-green); }
+
+@keyframes fadeUp
+{
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px)
+{
+  .ev-converter { padding: 28px 16px 64px; }
+  .ev-card      { padding: 28px 20px; }
+}
