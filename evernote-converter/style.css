@@ -241,6 +241,62 @@ body
   box-shadow: var(--shadow);
 }
 
+/* ── Meta options ── */
+.ev-meta-options
+{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ev-meta-label
+{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ev-chips
+{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ev-chip
+{
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  user-select: none;
+}
+
+.ev-chip:hover
+{
+  border-color: var(--ev-green-border);
+  color: var(--text);
+}
+
+.ev-chip.active
+{
+  background: var(--ev-green-bg);
+  border-color: var(--ev-green-border);
+  color: var(--ev-green-dim);
+  font-weight: 600;
+}
+
+.ev-chip--sep { margin-left: 6px; }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

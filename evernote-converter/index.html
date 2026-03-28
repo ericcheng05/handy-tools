@@ -29,6 +29,19 @@
       <input type="file" id="file-input" accept=".enex">
     </label>
 
+    <!-- Meta options -->
+    <div class="ev-meta-options">
+      <div class="ev-meta-label">Frontmatter fields</div>
+      <div class="ev-chips">
+        <button class="ev-chip active" data-meta="title">title</button>
+        <button class="ev-chip active" data-meta="created">created</button>
+        <button class="ev-chip active" data-meta="updated">updated</button>
+        <button class="ev-chip active" data-meta="tags">tags</button>
+        <button class="ev-chip active" data-meta="source">source</button>
+        <button class="ev-chip ev-chip--sep" id="chip-none">None</button>
+      </div>
+    </div>
+
     <div class="ev-status" id="status"></div>
   </div>
 
@@ -64,7 +77,18 @@ const previewLabel = document.getElementById('preview-label');
 const downloadBtn  = document.getElementById('download-btn');
 
 /* State */
-let noteFiles = [];   // [{name, bytes: Uint8Array}]
+let parsedNotes = [];   // raw note objects from parseEnex
+let noteFiles   = [];   // [{name, bytes: Uint8Array}]
+
+/* Meta config — which frontmatter fields to include */
+const metaConfig =
+{
+  title:   true,
+  created: true,
+  updated: true,
+  tags:    true,
+  source:  true,
+};
 
 /* ── Utilities ── */
 
@@ -371,18 +395,42 @@ function parseEnex(xmlText)
 }
 
 /* ── Build one note's .md content ── */
-function buildNoteFile(note)
+function buildNoteFile(note, cfg)
 {
-  let fm = '---\n';
-  fm += 'title: '   + yamlValue(note.title) + '\n';
-  if (note.created) fm += 'created: ' + note.created + '\n';
-  if (note.updated && note.updated !== note.created) fm += 'updated: ' + note.updated + '\n';
-  if (note.tags.length) fm += 'tags: [' + note.tags.map(yamlValue).join(', ') + ']\n';
-  if (note.sourceUrl)   fm += 'source: ' + note.sourceUrl + '\n';
-  fm += '---';
+  const hasAny = cfg.title || cfg.created || cfg.updated || cfg.tags || cfg.source;
+  let   output = '';
+
+  if (hasAny)
+  {
+    let fm = '---\n';
+    if (cfg.title)                                        fm += 'title: '   + yamlValue(note.title) + '\n';
+    if (cfg.created && note.created)                      fm += 'created: ' + note.created + '\n';
+    if (cfg.updated && note.updated
+        && note.updated !== note.created)                 fm += 'updated: ' + note.updated + '\n';
+    if (cfg.tags && note.tags.length)                     fm += 'tags: ['   + note.tags.map(yamlValue).join(', ') + ']\n';
+    if (cfg.source && note.sourceUrl)                     fm += 'source: '  + note.sourceUrl + '\n';
+    fm += '---\n\n';
+    output = fm;
+  }
 
   const body = enmlToMarkdown(note.content) || '_No content_';
-  return fm + '\n\n# ' + note.title + '\n\n' + body + '\n';
+  return output + '# ' + note.title + '\n\n' + body + '\n';
+}
+
+/* ── Rebuild files from cached notes + current config ── */
+function rebuild()
+{
+  if (!parsedNotes.length) return;
+  const seen = new Set();
+  const enc  = new TextEncoder();
+  noteFiles  = parsedNotes.map(note =>
+  {
+    const name    = sanitiseFilename(note.title, seen);
+    const content = buildNoteFile(note, metaConfig);
+    const bytes   = enc.encode(content);
+    return { name, bytes };
+  });
+  showPreview(noteFiles);
 }
 
 /* ── CRC-32 ── */
@@ -563,25 +611,12 @@ function handleFile(file)
       }
 
       dzLabel.textContent = '✅  ' + file.name;
-      setStatus('Found ' + notes.length + ' note' + (notes.length === 1 ? '' : 's') + ' — converting…', 'ok');
-
-      const seen = new Set();
-      const enc  = new TextEncoder();
-
-      const files = notes.map(note =>
-      {
-        const name    = sanitiseFilename(note.title, seen);
-        const content = buildNoteFile(note);
-        const bytes   = enc.encode(content);
-        return { name, bytes };
-      });
-
-      noteFiles = files;
 
       const word = notes.length === 1 ? 'note' : 'notes';
       setStatus('✓ Converted ' + notes.length + ' ' + word + ' from "' + file.name + '"', 'ok');
 
-      showPreview(files);
+      parsedNotes = notes;
+      rebuild();
     }
     catch (err)
     {
@@ -593,6 +628,37 @@ function handleFile(file)
   reader.onerror = () => setStatus('Could not read file.', 'error');
   reader.readAsText(file, 'UTF-8');
 }
+
+/* ── Frontmatter chip toggles ── */
+
+function syncNoneChip()
+{
+  const allOff = !Object.values(metaConfig).some(v => v);
+  document.getElementById('chip-none').classList.toggle('active', allOff);
+}
+
+document.querySelectorAll('.ev-chip[data-meta]').forEach(btn =>
+{
+  btn.addEventListener('click', () =>
+  {
+    const key = btn.dataset.meta;
+    metaConfig[key] = !metaConfig[key];
+    btn.classList.toggle('active', metaConfig[key]);
+    syncNoneChip();
+    rebuild();
+  });
+});
+
+document.getElementById('chip-none').addEventListener('click', () =>
+{
+  const allOff = !Object.values(metaConfig).some(v => v);
+  /* All off → restore all on; otherwise → turn all off */
+  const next = allOff;
+  Object.keys(metaConfig).forEach(k => { metaConfig[k] = next; });
+  document.querySelectorAll('.ev-chip[data-meta]').forEach(b => b.classList.toggle('active', next));
+  syncNoneChip();
+  rebuild();
+});
 
 /* ── Drag & drop ── */
 dropzone.addEventListener('dragover', e =>
