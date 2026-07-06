@@ -40,6 +40,19 @@ Export without media from WhatsApp → drop the file → download your `.html`.
 
 ---
 
+### 🧮 Rummikub Score Calculator
+> `rummikub-calculator/`
+
+End-of-round tile tallying without the mental math. Enter each player's leftover tiles on a calculator-style keypad, mark who went out, and let it work out the round score — plus a running total across the whole game.
+
+- **🔒 100% private** — all state stays in your browser (`localStorage`), nothing is uploaded
+- **🧮 Calculator-style entry** — numeric keypad per player, plus a one-tap Joker button
+- **🏆 Standard Rummikub scoring** — the player who went out scores the sum of everyone else's leftover tiles; everyone else scores their own tiles as a negative
+- **📊 Round history** — every round's scores and the running total, at a glance
+- **🤝 Draw support** — handles rounds where no one goes out
+
+---
+
 ## Dashboards
 
 ### 🍣 Sushiro Queue Status

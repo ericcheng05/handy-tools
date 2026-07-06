@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rummikub Score Calculator — myexample.work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Noto+Sans+HK:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="back-nav">
+  <a class="back-link" href="../">← myexample.work</a>
+</nav>
+
+<main class="rk-app">
+
+  <!-- ══════════════════════════════════════
+       Setup screen
+  ══════════════════════════════════════ -->
+  <section class="rk-setup" id="setup-screen">
+    <div class="rk-card rk-setup-card">
+      <div class="rk-tile-icon"><span class="tr">1</span><span class="tb">3</span></div>
+      <h1>Rummikub Score Calculator</h1>
+      <p class="rk-sub">Enter each player's leftover tiles with the keypad at the end of a round — running totals, round history and the final winner are worked out for you.</p>
+
+      <div class="rk-field">
+        <label class="rk-label">Players</label>
+        <div class="rk-count-pills" id="count-pills"></div>
+      </div>
+
+      <div class="rk-field">
+        <label class="rk-label">Names</label>
+        <div class="rk-name-inputs" id="name-inputs"></div>
+      </div>
+
+      <button class="rk-btn-primary rk-btn-block" id="start-btn">Start Game →</button>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════
+       Game screen
+  ══════════════════════════════════════ -->
+  <section class="rk-game" id="game-screen" hidden>
+
+    <div class="rk-scoreboard" id="scoreboard"></div>
+
+    <div class="rk-round-bar">
+      <div class="rk-round-label">Round <span id="round-num">1</span></div>
+      <button class="rk-btn-text" id="reset-game-btn">Reset game</button>
+    </div>
+
+    <!-- Who went out -->
+    <div class="rk-card rk-winner-card">
+      <div class="rk-label">Who went out this round?</div>
+      <div class="rk-winner-pills" id="winner-pills"></div>
+      <div class="rk-error" id="winner-error" hidden>Pick who went out, or mark the round a draw, before finishing it.</div>
+    </div>
+
+    <!-- Calculator -->
+    <div class="rk-card rk-calc-card">
+      <div class="rk-calc-tabs" id="calc-tabs"></div>
+
+      <div class="rk-calc-body" id="calc-body">
+
+        <div class="rk-tile-chips" id="tile-chips"></div>
+        <div class="rk-calc-subtotal">This round: <span id="calc-subtotal">0</span></div>
+
+        <div class="rk-winner-note" id="winner-note" hidden>🏆 Went out this round — scores the sum of everyone else's leftover tiles.</div>
+
+        <div class="rk-tile-grid" id="tile-grid"></div>
+
+      </div>
+    </div>
+
+    <button class="rk-btn-primary rk-btn-block" id="finish-round-btn">Finish Round ✓</button>
+
+    <!-- History -->
+    <div class="rk-card rk-history-card">
+      <div class="rk-history-header">
+        <span>Round History</span>
+        <button class="rk-btn-sm" id="end-game-btn">🏁 End Game</button>
+      </div>
+      <div class="rk-history-scroll">
+        <table id="history-table">
+          <thead></thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+      <p class="rk-history-empty" id="history-empty">No rounds finished yet — enter tiles above and hit “Finish Round”.</p>
+    </div>
+
+  </section>
+
+  <!-- ══════════════════════════════════════
+       Final results modal
+  ══════════════════════════════════════ -->
+  <div class="rk-modal-overlay" id="final-overlay" hidden>
+    <div class="rk-modal">
+      <div class="rk-modal-icon">🏆</div>
+      <h2>Game Over</h2>
+      <div class="rk-final-list" id="final-list"></div>
+      <div class="rk-modal-actions">
+        <button class="rk-btn-text" id="continue-game-btn">Keep playing</button>
+        <button class="rk-btn-primary" id="new-game-btn">New Game</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   Rummikub Score Calculator
+   All state lives in `state`, persisted to localStorage so a
+   refresh mid-game doesn't lose the scoreboard. No dependencies.
+   ============================================================ */
+
+'use strict';
+
+const STORAGE_KEY   = 'rummikub-calculator-state-v1';
+const JOKER_VALUE   = 30;
+const TILE_COLORS   = ['red', 'blue', 'black', 'orange'];
+const MIN_PLAYERS   = 2;
+const MAX_PLAYERS   = 6;
+
+/* ── DOM refs ── */
+const setupScreen    = document.getElementById('setup-screen');
+const gameScreen      = document.getElementById('game-screen');
+const countPillsEl    = document.getElementById('count-pills');
+const nameInputsEl    = document.getElementById('name-inputs');
+const startBtn        = document.getElementById('start-btn');
+
+const scoreboardEl    = document.getElementById('scoreboard');
+const roundNumEl      = document.getElementById('round-num');
+const resetGameBtn    = document.getElementById('reset-game-btn');
+
+const winnerPillsEl   = document.getElementById('winner-pills');
+const winnerErrorEl   = document.getElementById('winner-error');
+
+const calcTabsEl      = document.getElementById('calc-tabs');
+const tileChipsEl      = document.getElementById('tile-chips');
+const calcSubtotalEl  = document.getElementById('calc-subtotal');
+const winnerNoteEl    = document.getElementById('winner-note');
+const tileGridEl      = document.getElementById('tile-grid');
+
+const finishRoundBtn  = document.getElementById('finish-round-btn');
+
+const historyTableEl  = document.getElementById('history-table');
+const historyEmptyEl  = document.getElementById('history-empty');
+const endGameBtn      = document.getElementById('end-game-btn');
+
+const finalOverlay    = document.getElementById('final-overlay');
+const finalListEl     = document.getElementById('final-list');
+const continueGameBtn = document.getElementById('continue-game-btn');
+const newGameBtn      = document.getElementById('new-game-btn');
+
+/* ── State ── */
+let state         = null;   // set by newState() / loadState()
+let setupCount    = 4;      // pending player count on the setup screen
+
+function newState(names)
+{
+  return {
+    players:          names,
+    totals:           names.map(() => 0),
+    history:          [],                        // [{ scores:[...], winnerIndex }]
+    round:            1,
+    roundTiles:       names.map(() => []),       // [[{value, joker}], ...]
+    roundWinnerIndex: null,                       // player index, -1 = draw, null = unset
+    activePlayer:     0,
+  };
+}
+
+function saveState()
+{
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadState()
+{
+  try
+  {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }
+  catch (err)
+  {
+    return null;
+  }
+}
+
+/* ── Setup screen ── */
+
+function renderCountPills()
+{
+  countPillsEl.innerHTML = '';
+  for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++)
+  {
+    const btn = document.createElement('button');
+    btn.textContent = n;
+    btn.className   = 'rk-pill' + (n === setupCount ? ' active' : '');
+    btn.addEventListener('click', () =>
+    {
+      setupCount = n;
+      renderCountPills();
+      renderNameInputs();
+    });
+    countPillsEl.appendChild(btn);
+  }
+}
+
+function renderNameInputs()
+{
+  const prevValues = Array.from(nameInputsEl.querySelectorAll('input')).map(i => i.value);
+  nameInputsEl.innerHTML = '';
+  for (let i = 0; i < setupCount; i++)
+  {
+    const input = document.createElement('input');
+    input.className   = 'rk-name-input';
+    input.type        = 'text';
+    input.maxLength   = 20;
+    input.placeholder = 'Player ' + (i + 1);
+    input.value       = prevValues[i] || '';
+    nameInputsEl.appendChild(input);
+  }
+}
+
+startBtn.addEventListener('click', () =>
+{
+  const names = Array.from(nameInputsEl.querySelectorAll('input')).map((input, i) =>
+    input.value.trim() || ('Player ' + (i + 1))
+  );
+  state = newState(names);
+  saveState();
+  showGameScreen();
+});
+
+/* ── Screen switching ── */
+
+function showGameScreen()
+{
+  setupScreen.hidden = true;
+  gameScreen.hidden  = false;
+  renderAll();
+}
+
+function showSetupScreen()
+{
+  gameScreen.hidden  = true;
+  setupScreen.hidden = false;
+  renderCountPills();
+  renderNameInputs();
+}
+
+/* ── Scoreboard ── */
+
+function renderScoreboard()
+{
+  const order = state.players.map((_, i) => i)
+    .sort((a, b) => state.totals[b] - state.totals[a]);
+  const leaderTotal = state.totals[order[0]];
+  const hasScores   = state.history.length > 0;
+
+  scoreboardEl.innerHTML = '';
+  order.forEach(i =>
+  {
+    const pill = document.createElement('button');
+    const isLeader = hasScores && state.totals[i] === leaderTotal && leaderTotal !== 0;
+    pill.className = 'rk-score-pill' + (i === state.activePlayer ? ' active' : '') + (isLeader ? ' leader' : '');
+    pill.innerHTML =
+      (isLeader ? '<span class="crown">👑</span>' : '') +
+      '<span class="name">' + escapeHtml(state.players[i]) + '</span>' +
+      '<span class="total ' + scoreClass(state.totals[i]) + '">' + signed(state.totals[i]) + '</span>';
+    pill.addEventListener('click', () =>
+    {
+      state.activePlayer = i;
+      renderCalc();
+      renderScoreboard();
+    });
+    scoreboardEl.appendChild(pill);
+  });
+}
+
+/* ── Who went out ── */
+
+function renderWinnerPills()
+{
+  winnerPillsEl.innerHTML = '';
+
+  state.players.forEach((name, i) =>
+  {
+    const pill = document.createElement('button');
+    pill.className = 'rk-pill' + (state.roundWinnerIndex === i ? ' active' : '');
+    pill.textContent = name;
+    pill.addEventListener('click', () =>
+    {
+      state.roundWinnerIndex = state.roundWinnerIndex === i ? null : i;
+      winnerErrorEl.hidden = true;
+      saveState();
+      renderWinnerPills();
+      renderCalc();
+    });
+    winnerPillsEl.appendChild(pill);
+  });
+
+  const draw = document.createElement('button');
+  draw.className   = 'rk-pill rk-pill-draw' + (state.roundWinnerIndex === -1 ? ' active' : '');
+  draw.textContent = '🤝 Draw / no one out';
+  draw.addEventListener('click', () =>
+  {
+    state.roundWinnerIndex = state.roundWinnerIndex === -1 ? null : -1;
+    winnerErrorEl.hidden = true;
+    saveState();
+    renderWinnerPills();
+    renderCalc();
+  });
+  winnerPillsEl.appendChild(draw);
+}
+
+/* ── Calculator ── */
+
+function renderCalcTabs()
+{
+  calcTabsEl.innerHTML = '';
+  state.players.forEach((name, i) =>
+  {
+    const tab = document.createElement('button');
+    tab.className = 'rk-calc-tab' + (i === state.activePlayer ? ' active' : '');
+    tab.textContent = name + (state.roundWinnerIndex === i ? ' 🏆' : '');
+    tab.addEventListener('click', () =>
+    {
+      state.activePlayer = i;
+      saveState();
+      renderCalcTabs();
+      renderCalc();
+    });
+    calcTabsEl.appendChild(tab);
+  });
+}
+
+function renderTileChips()
+{
+  const tiles = state.roundTiles[state.activePlayer];
+  tileChipsEl.innerHTML = '';
+
+  if (!tiles.length)
+  {
+    const empty = document.createElement('span');
+    empty.className = 'rk-chip-empty';
+    empty.textContent = 'No tiles entered yet';
+    tileChipsEl.appendChild(empty);
+  }
+
+  tiles.forEach((tile, idx) =>
+  {
+    const chip = document.createElement('span');
+    chip.className = tile.joker
+      ? 'rk-chip rk-chip-joker'
+      : 'rk-chip rk-chip-' + TILE_COLORS[idx % TILE_COLORS.length];
+    chip.innerHTML =
+      '<span class="v">' + (tile.joker ? '🃏' : tile.value) + '</span>' +
+      '<button class="rm" aria-label="Remove tile">×</button>';
+    chip.querySelector('.rm').addEventListener('click', () =>
+    {
+      state.roundTiles[state.activePlayer].splice(idx, 1);
+      saveState();
+      renderCalc();
+    });
+    tileChipsEl.appendChild(chip);
+  });
+
+  const subtotal = tiles.reduce((sum, t) => sum + t.value, 0);
+  calcSubtotalEl.textContent = subtotal;
+}
+
+function renderCalc()
+{
+  renderCalcTabs();
+  renderTileChips();
+
+  const isWinner = state.roundWinnerIndex === state.activePlayer;
+  winnerNoteEl.hidden = !isWinner;
+  tileGridEl.hidden   = isWinner;
+}
+
+/* ── Tile grid (14 buttons: 1–13 + Joker, built once) ── */
+
+function addTile(value, isJoker)
+{
+  state.roundTiles[state.activePlayer].push({ value, joker: isJoker });
+  saveState();
+  renderCalc();
+}
+
+function renderTileGrid()
+{
+  tileGridEl.innerHTML = '';
+
+  for (let v = 1; v <= 13; v++)
+  {
+    const btn = document.createElement('button');
+    btn.className   = 'rk-tile-btn';
+    btn.textContent = v;
+    btn.addEventListener('click', () => addTile(v, false));
+    tileGridEl.appendChild(btn);
+  }
+
+  const joker = document.createElement('button');
+  joker.className = 'rk-tile-btn rk-tile-btn-joker';
+  joker.innerHTML = '🃏<span class="rk-tile-joker-value">' + JOKER_VALUE + '</span>';
+  joker.addEventListener('click', () => addTile(JOKER_VALUE, true));
+  tileGridEl.appendChild(joker);
+}
+
+renderTileGrid();
+
+/* ── Finish round ── */
+
+function scoreClass(n) { return n > 0 ? 'pos' : n < 0 ? 'neg' : ''; }
+function signed(n)     { return (n > 0 ? '+' : '') + n; }
+
+function escapeHtml(str)
+{
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+finishRoundBtn.addEventListener('click', () =>
+{
+  if (state.roundWinnerIndex === null || state.roundWinnerIndex === undefined)
+  {
+    winnerErrorEl.hidden = false;
+    winnerPillsEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  const ownSums = state.roundTiles.map(tiles => tiles.reduce((sum, t) => sum + t.value, 0));
+  const winnerIndex = state.roundWinnerIndex;
+  const scores = ownSums.map((sum, i) =>
+  {
+    if (winnerIndex === -1)          return -sum;
+    if (i === winnerIndex)
+    {
+      return ownSums.reduce((total, s, j) => j === winnerIndex ? total : total + s, 0);
+    }
+    return -sum;
+  });
+
+  state.history.push({ scores, winnerIndex });
+  scores.forEach((s, i) => { state.totals[i] += s; });
+
+  state.round += 1;
+  state.roundTiles       = state.players.map(() => []);
+  state.roundWinnerIndex = null;
+
+  saveState();
+  renderAll();
+});
+
+/* ── History table ── */
+
+function renderHistory()
+{
+  historyEmptyEl.hidden = state.history.length > 0;
+  historyTableEl.hidden = state.history.length === 0;
+
+  const thead = historyTableEl.querySelector('thead');
+  const tbody = historyTableEl.querySelector('tbody');
+  const tfoot = historyTableEl.querySelector('tfoot');
+
+  thead.innerHTML =
+    '<tr><th>Round</th>' + state.players.map(n => '<th>' + escapeHtml(n) + '</th>').join('') + '</tr>';
+
+  tbody.innerHTML = state.history.map((r, idx) =>
+    '<tr>' +
+      '<td class="rk-round-cell">' + (idx + 1) + (r.winnerIndex === -1 ? ' <span class="rk-draw-tag">draw</span>' : '') + '</td>' +
+      r.scores.map((s, i) =>
+        '<td class="' + scoreClass(s) + '">' + signed(s) + (i === r.winnerIndex ? ' 🏆' : '') + '</td>'
+      ).join('') +
+    '</tr>'
+  ).join('');
+
+  tfoot.innerHTML =
+    '<tr class="rk-total-row"><td>Total</td>' +
+      state.totals.map(t => '<td class="' + scoreClass(t) + '">' + signed(t) + '</td>').join('') +
+    '</tr>';
+}
+
+/* ── End game / final results ── */
+
+endGameBtn.addEventListener('click', () =>
+{
+  const order = state.players.map((_, i) => i)
+    .sort((a, b) => state.totals[b] - state.totals[a]);
+
+  finalListEl.innerHTML = order.map((i, rank) =>
+    '<div class="rk-final-row' + (rank === 0 ? ' winner' : '') + '">' +
+      '<span class="rank">' + (rank === 0 ? '👑' : '#' + (rank + 1)) + '</span>' +
+      '<span class="name">' + escapeHtml(state.players[i]) + '</span>' +
+      '<span class="total ' + scoreClass(state.totals[i]) + '">' + signed(state.totals[i]) + '</span>' +
+    '</div>'
+  ).join('');
+
+  finalOverlay.hidden = false;
+});
+
+continueGameBtn.addEventListener('click', () => { finalOverlay.hidden = true; });
+
+newGameBtn.addEventListener('click', () =>
+{
+  finalOverlay.hidden = true;
+  resetGame();
+});
+
+/* ── Reset ── */
+
+function resetGame()
+{
+  if (!confirm('Reset this game? Round history and totals will be cleared.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = null;
+  showSetupScreen();
+}
+
+resetGameBtn.addEventListener('click', resetGame);
+
+/* ── Render everything ── */
+
+function renderAll()
+{
+  roundNumEl.textContent = state.round;
+  renderScoreboard();
+  renderWinnerPills();
+  renderCalc();
+  renderHistory();
+}
+
+/* ── Boot ── */
+
+const restored = loadState();
+if (restored && restored.players && restored.players.length)
+{
+  state = restored;
+  showGameScreen();
+}
+else
+{
+  showSetupScreen();
+}
+</script>
+
+</body>
+</html>
