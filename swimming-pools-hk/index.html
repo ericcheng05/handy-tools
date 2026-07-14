@@ -680,10 +680,8 @@ function buildAdmissionHtml(adm)
   const now = adm.current_admission;
   const cap = adm.max_capacity;
 
-  // Prefer the published ratio; fall back to computing it when absent.
-  const ratio = adm.utilisation !== null && adm.utilisation !== undefined
-    ? adm.utilisation
-    : (cap > 0 ? now / cap : 0);
+  // Utilisation is no longer supplied by the feed — derive it from headcount / capacity.
+  const ratio = cap > 0 ? now / cap : 0;
 
   const pct   = Math.max(0, Math.min(100, Math.round(ratio * 100)));
   const level = pct >= 60 ? "high" : pct >= 30 ? "mid" : "low";
