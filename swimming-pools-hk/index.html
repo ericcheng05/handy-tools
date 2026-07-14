@@ -698,9 +698,10 @@ function buildAdmissionHtml(adm)
       : `<span class="adm-icon adm-empty">${PERSON_SVG}</span>`
   ).join("");
 
-  const tipParts = [`${now} of ${cap} swimmers (${pct}% full)`];
-  if (adm.allowed_admission !== null && adm.allowed_admission !== undefined)
-    tipParts.push(`${adm.allowed_admission} spaces left`);
+  // "Spaces left" is derived from capacity − headcount (the feed no longer supplies it).
+  const spacesLeft = Math.max(0, cap - now);
+
+  const tipParts = [`${now} of ${cap} swimmers (${pct}% full)`, `${spacesLeft} spaces left`];
   if (admissionTime) tipParts.push(`as of ${admissionTime}`);
 
   return `
