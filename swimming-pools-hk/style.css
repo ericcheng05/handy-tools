@@ -508,8 +508,9 @@ body::after
   border: 1px solid var(--amber-border);
 }
 
-/* ── Session info ────────────────────────────────────────── */
-.session-info
+/* ── Card info rows ──────────────────────────────────────── */
+/* Session and admission share one row layout — same font, spacing, and dot. */
+.info-row
 {
   font-family: var(--font-mono);
   font-size: 0.875rem;
@@ -520,7 +521,7 @@ body::after
   flex-wrap: wrap;
 }
 
-.session-dot
+.info-dot
 {
   width: 6px;
   height: 6px;
@@ -528,51 +529,25 @@ body::after
   flex-shrink: 0;
 }
 
-.session-dot.open-now  { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
-.session-dot.closed-now { background: var(--dim); }
+.info-dot.dot-green { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+.info-dot.dot-amber { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
+.info-dot.dot-red   { background: var(--red);   box-shadow: 0 0 0 3px var(--red-bg); }
+.info-dot.dot-grey  { background: var(--dim); }
 
-.session-time
+/* Emphasized value within a row — session time, admission count */
+.info-value
 {
   color: var(--text-sec);
   font-weight: 500;
 }
 
-/* On closed cards the whole card is dimmed via opacity, so boost session-info
+/* On closed cards the whole card is dimmed via opacity, so boost the info rows
    back to full contrast so the reason remains clearly readable */
-.pool-card.closed .session-info
-{
-  color: var(--text-sec);
-}
+.pool-card.closed .info-row   { color: var(--text-sec); }
+.pool-card.closed .info-value { color: var(--text); }
 
-.pool-card.closed .session-time
-{
-  color: var(--text);
-}
-
-/* ── Admission info ──────────────────────────────────────── */
-/* Mirrors .session-info so the two rows read as a matched pair */
-.admission-info
-{
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 6px;
-  cursor: default;
-}
-
-.admission-count
-{
-  color: var(--text-sec);
-  font-weight: 500;
-}
-
-.session-dot.adm-dot-low   { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
-.session-dot.adm-dot-mid   { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
-.session-dot.adm-dot-high  { background: var(--red);   box-shadow: 0 0 0 3px var(--red-bg); }
+/* Admission row is a hover target for its tooltip; layout comes from .info-row */
+.admission-info { cursor: default; }
 
 /* Ten-person occupancy meter */
 .adm-icons

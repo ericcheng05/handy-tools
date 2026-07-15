@@ -685,6 +685,7 @@ function buildAdmissionHtml(adm)
 
   const pct   = Math.max(0, Math.min(100, Math.round(ratio * 100)));
   const level = pct >= 60 ? "high" : pct >= 30 ? "mid" : "low";
+  const dot   = level === "high" ? "red" : level === "mid" ? "amber" : "green";
 
   // One icon per 10% occupied. Any non-zero headcount lights at least one icon, so a
   // near-empty pool never reads as completely empty.
@@ -705,10 +706,10 @@ function buildAdmissionHtml(adm)
   if (admissionTime) tipParts.push(`as of ${admissionTime}`);
 
   return `
-    <div class="admission-info" title="${esc(tipParts.join(" · "))}">
-      <span class="session-dot adm-dot-${level}"></span>
+    <div class="info-row admission-info" title="${esc(tipParts.join(" · "))}">
+      <span class="info-dot dot-${dot}"></span>
       <span>Admission</span>
-      <span class="admission-count">${now} / ${cap}</span>
+      <span class="info-value">${now} / ${cap}</span>
       <span class="adm-icons">${icons}</span>
     </div>`;
 }
@@ -746,49 +747,49 @@ function buildPoolCard(pool, idx)
   if (pool._status.open && pool._status.slot)
   {
     sessionHtml = `
-      <div class="session-info">
-        <span class="session-dot open-now"></span>
+      <div class="info-row">
+        <span class="info-dot dot-green"></span>
         <span>Session ${pool._status.slot.session}</span>
-        <span class="session-time">${esc(pool._status.slot.open)} – ${esc(pool._status.slot.close)}</span>
+        <span class="info-value">${esc(pool._status.slot.open)} – ${esc(pool._status.slot.close)}</span>
       </div>`;
   }
   else if (pool._status.tag === "Weekly Cleansing")
   {
     sessionHtml = `
-      <div class="session-info">
-        <span class="session-dot closed-now"></span>
+      <div class="info-row">
+        <span class="info-dot dot-grey"></span>
         <span>Weekly Cleansing</span>
         ${pool._status.cleansingUntil
-          ? `<span class="session-time">Reopens at ${esc(pool._status.cleansingUntil)}</span>`
+          ? `<span class="info-value">Reopens at ${esc(pool._status.cleansingUntil)}</span>`
           : ""}
       </div>`;
   }
   else if (pool._status.tag === "Session Break" && pool._status.nextOpen)
   {
     sessionHtml = `
-      <div class="session-info">
-        <span class="session-dot closed-now"></span>
+      <div class="info-row">
+        <span class="info-dot dot-grey"></span>
         <span>Session Break</span>
-        <span class="session-time">Reopens at ${esc(pool._status.nextOpen)}</span>
+        <span class="info-value">Reopens at ${esc(pool._status.nextOpen)}</span>
       </div>`;
   }
   else if ((pool._status.tag === "Closed for the Night" || pool._status.tag === "Opening Soon" || pool._status.tag === "End of Day"))
   {
     const label = pool._status.nextOpenLabel || "Tomorrow from";
     sessionHtml = `
-      <div class="session-info">
-        <span class="session-dot closed-now"></span>
+      <div class="info-row">
+        <span class="info-dot dot-grey"></span>
         <span>${esc(pool._status.tag)}</span>
         ${pool._status.nextOpen
-          ? `<span class="session-time">${esc(label)} ${esc(pool._status.nextOpen)}</span>`
+          ? `<span class="info-value">${esc(label)} ${esc(pool._status.nextOpen)}</span>`
           : ""}
       </div>`;
   }
   else
   {
     sessionHtml = `
-      <div class="session-info">
-        <span class="session-dot closed-now"></span>
+      <div class="info-row">
+        <span class="info-dot dot-grey"></span>
         <span>${esc(pool._status.tag || "Closed")}</span>
       </div>`;
   }
