@@ -244,6 +244,7 @@ body::after
 .app-card:nth-child(3) { animation-delay: 0.46s; }
 .app-card:nth-child(4) { animation-delay: 0.54s; }
 .app-card:nth-child(5) { animation-delay: 0.62s; }
+.app-card:nth-child(6) { animation-delay: 0.70s; }
 
 /* colour accent strip at top */
 .app-card::before

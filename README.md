@@ -53,6 +53,21 @@ End-of-round tile tallying without the mental math. Enter each player's leftover
 
 ---
 
+### 🏊 Swim FIT Repair
+> `swim-fit-repair/`
+
+Garmin watches sometimes record a pool swim wrong — a length swum gets logged as rest, or a missed wall-turn merges two lengths into one. [swimdata.org](https://swimdata.org) fixes most cases, but can't turn a rest length back into a swimming one. This tool finds both problems and fixes them, right in your browser, before you re-upload to Garmin Connect.
+
+Export from Connect → drop the `.zip` or `.fit` → tick the fixes → download the repaired file.
+
+- **🔒 100% private** — decode, fix and re-encode all happen client-side, nothing is uploaded
+- **🔍 Two detectors** — a swim wrongly marked as rest, and a missed turn that merged two (or more) lengths into one
+- **📊 Full lap/length breakdown** — every length nested under its lap, flagged rows highlighted with the proposed fix and a confidence badge
+- **✅ You decide** — each fix is a checkbox; the low-confidence one (rest → swim) starts unticked so you can confirm it by eye
+- **📦 Ready to re-upload** — downloads a `<id>_REPAIRED.fit` with corrected lap and session totals
+
+---
+
 ## Dashboards
 
 ### 🍣 Sushiro Queue Status
