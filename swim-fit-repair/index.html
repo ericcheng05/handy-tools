@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swim FIT Repair</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="back-nav">
+  <a class="back-link" href="../">← myexample.work</a>
+</nav>
+
+<div class="sr-page">
+<div class="sr-container">
+
+  <header class="sr-header">
+    <h1><span class="icon">🏊</span> Swim FIT Repair</h1>
+    <p>Drop a Garmin pool-swim export (<code>.zip</code> or <code>.fit</code>). It finds lengths the watch recorded wrong — a swim marked as rest, or a missed turn that merged two lengths into one — so you can fix them before re-uploading to Garmin Connect. Runs entirely in your browser: nothing is uploaded, nowhere.</p>
+  </header>
+
+  <!-- ── Drop zone ── -->
+  <div class="sr-card" id="drop-card">
+    <label class="sr-dropzone" id="dropzone">
+      <span class="dz-icon">📂</span>
+      <span class="dz-label" id="dz-label">Drop your Garmin export here</span>
+      <span class="dz-sub">.zip or .fit · processed entirely in your browser</span>
+      <input type="file" id="file-input" accept=".zip,.fit">
+    </label>
+    <div class="sr-status" id="status"></div>
+  </div>
+
+  <!-- ── Summary ── -->
+  <div class="sr-card sr-hidden" id="summary-card">
+    <div class="sr-summary" id="summary-grid"></div>
+  </div>
+
+  <!-- ── Laps / lengths table ── -->
+  <div class="sr-card sr-hidden" id="laps-card">
+    <div class="sr-laps" id="laps-container"></div>
+  </div>
+
+  <!-- ── Download ── -->
+  <div class="sr-card sr-hidden" id="download-card">
+    <button class="sr-btn" id="download-btn">⬇ Download repaired .fit</button>
+    <div class="sr-reminder">⚠️ Delete the original activity in Garmin Connect before uploading the repaired file. Connect rejects a file it thinks it already has.</div>
+  </div>
+
+</div>
+</div>
+
+<script type="module">
+import * as repair from './repair.js';
+
+const dropzone       = document.getElementById('dropzone');
+const fileInput      = document.getElementById('file-input');
+const dzLabel        = document.getElementById('dz-label');
+const statusEl       = document.getElementById('status');
+const summaryCard    = document.getElementById('summary-card');
+const summaryGrid    = document.getElementById('summary-grid');
+const lapsCard       = document.getElementById('laps-card');
+const lapsContainer  = document.getElementById('laps-container');
+const downloadCard   = document.getElementById('download-card');
+const downloadBtn    = document.getElementById('download-btn');
+
+let originalBytes  = null;  // ArrayBuffer of raw .fit bytes
+let activityId     = 'activity';
+let pristineModel  = null;  // model built from the untouched file — table structure + "before" totals
+let pristineIssues = null;  // issues detected against pristineModel, stable ids
+let selected       = new Set();
+
+function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = 'sr-status ' + (cls || ''); }
+
+function fmtTime(totalSeconds)
+{
+  if (totalSeconds == null) return '—';
+  const s = Math.round(totalSeconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+    : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function fmtStroke(s)
+{
+  const map = { freestyle: 'Free', backstroke: 'Back', breaststroke: 'Breast', butterfly: 'Fly', drill: 'Drill', mixed: 'Mixed', im: 'IM' };
+  return map[s] || s || '—';
+}
+
+function fmtPace(avgSpeedMs)
+{
+  if (!avgSpeedMs) return '—';
+  const secPer100 = 100 / avgSpeedMs;
+  return fmtTime(secPer100) + '/100m';
+}
+
+// ── File loading ────────────────────────────────────────────
+
+async function extractFitBytes(file)
+{
+  const buf = await file.arrayBuffer();
+  if (/\.zip$/i.test(file.name))
+  {
+    const { unzipSync } = await import('https://cdn.jsdelivr.net/npm/fflate/+esm');
+    const entries = unzipSync(new Uint8Array(buf));
+    const names = Object.keys(entries);
+    const pick = names.find(n => /_ACTIVITY\.fit$/i.test(n)) || names.find(n => /\.fit$/i.test(n));
+    if (!pick) throw new Error('No .fit file found inside the zip');
+    const u8 = entries[pick];
+    return { bytes: u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength), name: pick };
+  }
+  return { bytes: buf, name: file.name };
+}
+
+function idFromName(name)
+{
+  return name.replace(/\.(zip|fit)$/i, '').replace(/_ACTIVITY$/i, '');
+}
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e =>
+{
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+async function handleFile(file)
+{
+  summaryCard.classList.add('sr-hidden');
+  lapsCard.classList.add('sr-hidden');
+  downloadCard.classList.add('sr-hidden');
+  setStatus('Reading ' + file.name + ' …', '');
+
+  try
+  {
+    const { bytes, name } = await extractFitBytes(file);
+    originalBytes = bytes;
+    activityId = idFromName(name);
+
+    pristineModel  = repair.buildModel(repair.decodeFit(originalBytes).messages);
+    pristineIssues = repair.detectIssues(pristineModel);
+    selected = new Set(pristineIssues.filter(i => i.defaultOn).map(i => i.id));
+
+    dzLabel.textContent = '✅  ' + file.name;
+    setStatus(
+      pristineIssues.length
+        ? `Found ${pristineIssues.length} possible issue${pristineIssues.length !== 1 ? 's' : ''} — review below`
+        : 'No issues found — this file looks clean',
+      'ok'
+    );
+
+    renderLaps();
+    updatePreview();
+
+    summaryCard.classList.remove('sr-hidden');
+    lapsCard.classList.remove('sr-hidden');
+    downloadCard.classList.remove('sr-hidden');
+  }
+  catch (err)
+  {
+    console.error(err);
+    setStatus('Error: ' + err.message, 'error');
+  }
+}
+
+// ── Pipeline: fresh decode + apply selected fixes ──────────
+
+function runPipeline(selectedIds)
+{
+  const decoded = repair.decodeFit(originalBytes);
+  const model   = repair.buildModel(decoded.messages);
+  const issues  = repair.detectIssues(model);
+  repair.applyFixes(decoded, model, issues, selectedIds);
+  return { decoded, model, issues };
+}
+
+// ── Rendering ───────────────────────────────────────────────
+
+function renderLaps()
+{
+  const issueByLength = new Map(pristineIssues.map(i => [i.length.messageIndex, i]));
+
+  lapsContainer.innerHTML = pristineModel.laps.map((g, lapIdx) =>
+  {
+    const isRest = g.lengths.every(l => l.lengthType === 'idle');
+    const headerRight = isRest
+      ? fmtTime(g.lap.totalTimerTime) + ' rest'
+      : `${g.lap.totalDistance} m · ${g.lap.numActiveLengths} length${g.lap.numActiveLengths !== 1 ? 's' : ''}`;
+
+    const rows = g.lengths.map(l =>
+    {
+      const issue = issueByLength.get(l.messageIndex);
+      const rowClass = ['sr-length-row', l.lengthType === 'idle' ? 'is-idle' : '', issue ? `flagged type-${issue.type.toLowerCase()}` : ''].filter(Boolean).join(' ');
+      const label = l.lengthType === 'active' ? fmtStroke(l.swimStroke) : 'Rest';
+
+      let fixRow = '';
+      if (issue)
+      {
+        const desc = issue.type === 'A'
+          ? `Mark as a swimming length (${fmtStroke(issue.proposed.swimStroke)}, ~${issue.proposed.totalStrokes} strokes)`
+          : `Split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)} each`;
+        fixRow = `
+          <div class="sr-fix-row">
+            <label>
+              <input type="checkbox" data-issue-id="${issue.id}" ${selected.has(issue.id) ? 'checked' : ''}>
+              <span>${desc}</span>
+            </label>
+            <span class="sr-confidence ${issue.confidence}">${issue.confidence}</span>
+          </div>`;
+      }
+
+      return `
+        <div class="${rowClass}">
+          <span class="idx">${l.messageIndex}</span>
+          <span class="stroke">${label}</span>
+          <span class="time">${fmtTime(l.totalTimerTime)}</span>
+          <span class="strokes">${l.lengthType === 'active' ? (l.totalStrokes ?? '—') + ' str' : ''}</span>
+          <span class="pace">${l.lengthType === 'active' ? fmtPace(l.avgSpeed) : ''}</span>
+          ${fixRow}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="sr-lap ${isRest ? 'is-rest' : ''}">
+        <div class="sr-lap-header"><span>Lap ${lapIdx + 1}</span><span>${headerRight}</span></div>
+        ${rows}
+      </div>`;
+  }).join('');
+
+  lapsContainer.querySelectorAll('input[data-issue-id]').forEach(cb =>
+  {
+    cb.addEventListener('change', () =>
+    {
+      const id = cb.dataset.issueId;
+      if (cb.checked) selected.add(id); else selected.delete(id);
+      updatePreview();
+    });
+  });
+}
+
+function renderSummary(before, after)
+{
+  const distChanged = before.totalDistance !== after.totalDistance;
+  const activeChanged = before.numActiveLengths !== after.numActiveLengths;
+  const lenChanged = before.numLengths !== after.numLengths;
+
+  const stat = (label, value) => `
+    <div class="sr-stat">
+      <span class="sr-stat-label">${label}</span>
+      <span class="sr-stat-value">${value}</span>
+    </div>`;
+
+  const beforeAfter = (b, a, changed, suffix = '') =>
+    changed ? `${b}${suffix} <span class="arrow">→</span> <span class="after">${a}${suffix}</span>` : `${b}${suffix}`;
+
+  summaryGrid.innerHTML = [
+    stat('Pool length', before.poolLength + ' m'),
+    stat('Distance', beforeAfter(before.totalDistance, after.totalDistance, distChanged, ' m')),
+    stat('Total time', fmtTime(before.totalElapsedTime)),
+    stat('Active lengths', beforeAfter(before.numActiveLengths, after.numActiveLengths, activeChanged)),
+    stat('Total lengths', beforeAfter(before.numLengths, after.numLengths, lenChanged)),
+    stat('Fixes selected', `${selected.size} / ${pristineIssues.length}`),
+  ].join('');
+}
+
+function updatePreview()
+{
+  const before = repair.summarize(pristineModel);
+  before.numLengths = pristineModel.laps.reduce((s, g) => s + g.lengths.length, 0);
+
+  const { model: afterModel } = runPipeline(selected);
+  const after = repair.summarize(afterModel);
+  after.numLengths = afterModel.laps.reduce((s, g) => s + g.lengths.length, 0);
+
+  renderSummary(before, after);
+}
+
+// ── Download ────────────────────────────────────────────────
+
+downloadBtn.addEventListener('click', () =>
+{
+  try
+  {
+    const { decoded } = runPipeline(selected);
+    const bytes = repair.encodeFit(decoded.order);
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${activityId}_REPAIRED.fit`;
+    a.click();
+  }
+  catch (err)
+  {
+    console.error(err);
+    setStatus('Error building repaired file: ' + err.message, 'error');
+  }
+});
+</script>
+
+</body>
+</html>
