@@ -39,8 +39,10 @@
   <!-- ── Laps / lengths table ── -->
   <div class="sr-card sr-hidden" id="laps-card">
     <div class="sr-toolbar">
-      <span class="sr-toolbar-hint" id="merge-hint">Tick 2+ adjacent lengths of the same kind to merge them</span>
+      <span class="sr-toolbar-hint" id="merge-hint">Tick lengths to merge (2+, adjacent, same kind) or bulk-change their stroke</span>
       <div class="sr-toolbar-actions">
+        <select class="sr-kind-select" id="bulk-kind-select"></select>
+        <button class="sr-btn-ghost" id="bulk-apply-btn" disabled>Apply to selected</button>
         <button class="sr-btn-ghost" id="merge-btn" disabled>⤳ Merge selected</button>
         <button class="sr-btn-ghost" id="undo-btn">↺ Undo all edits</button>
       </div>
@@ -70,6 +72,8 @@ const lapsCard       = document.getElementById('laps-card');
 const lapsContainer  = document.getElementById('laps-container');
 const mergeBtn       = document.getElementById('merge-btn');
 const mergeHint      = document.getElementById('merge-hint');
+const bulkKindSelect = document.getElementById('bulk-kind-select');
+const bulkApplyBtn   = document.getElementById('bulk-apply-btn');
 const undoBtn        = document.getElementById('undo-btn');
 const downloadCard   = document.getElementById('download-card');
 const downloadBtn    = document.getElementById('download-btn');
@@ -313,9 +317,10 @@ function renderLaps(issues)
 function updateMergeButton()
 {
   mergeBtn.disabled = selectedForMerge.size < 2;
-  mergeHint.textContent = selectedForMerge.size >= 2
-    ? `${selectedForMerge.size} lengths selected`
-    : 'Tick 2+ adjacent lengths of the same kind to merge them';
+  bulkApplyBtn.disabled = selectedForMerge.size < 1;
+  mergeHint.textContent = selectedForMerge.size
+    ? `${selectedForMerge.size} length${selectedForMerge.size !== 1 ? 's' : ''} selected`
+    : 'Tick lengths to merge (2+, adjacent, same kind) or bulk-change their stroke';
 }
 
 mergeBtn.addEventListener('click', () =>
@@ -331,6 +336,22 @@ mergeBtn.addEventListener('click', () =>
     setStatus('Error: ' + err.message, 'error');
   }
 });
+
+bulkApplyBtn.addEventListener('click', () =>
+{
+  try
+  {
+    for (const length of selectedForMerge) repair.setLengthKind(working.model, length, bulkKindSelect.value);
+    selectedForMerge.clear();
+    render();
+  }
+  catch (err)
+  {
+    setStatus('Error: ' + err.message, 'error');
+  }
+});
+
+bulkKindSelect.innerHTML = lengthOptionsHtml('freestyle');
 
 undoBtn.addEventListener('click', () =>
 {
