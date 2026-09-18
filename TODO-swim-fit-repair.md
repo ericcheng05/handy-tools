@@ -41,13 +41,56 @@ handy-tools/
   conventions. Other tools keep their script inline. `repair.js` is the
   deliberate exception, so the logic stays testable and portable.
 - Libraries from CDN as ES modules, with no bundler:
-  - `@garmin/fitsdk`: `https://cdn.jsdelivr.net/npm/@garmin/fitsdk/+esm`
-    (Decoder **and** Encoder)
+  - `@garmin/fitsdk`: see [Official FIT SDK only](#official-fit-sdk-only)
   - `fflate` to unzip Garmin's `.zip` export in the browser
 - Add an app card to the root `index.html` and a section to `README.md`.
 - **Do not copy code from swimdata.org.** It is GPL-3.0
   ([source](https://github.com/PeterK-end/swim-data-analyser)). Following its
   approach (fitsdk plus a length/lap model) is fine; write the code fresh.
+
+### Official FIT SDK only
+
+All FIT reading and writing goes through Garmin's own SDK. No FIT parsing or
+encoding code is written by hand. The quick decoder used earlier to diagnose the
+sample files was a throwaway and is not part of this project.
+
+**Why this package is the official one:** `@garmin/fitsdk` is published from
+[github.com/garmin/fit-javascript-sdk](https://github.com/garmin/fit-javascript-sdk)
+by GitHub Actions trusted publishing, with SLSA provenance attached. Its npm
+maintainers have `@garmin.com` addresses, it has no dependencies, and every
+source file carries a Garmin copyright header. It is licensed under Garmin's FIT
+Protocol License (`LICENSE.txt` in the package).
+
+**Import the published files, pinned to an exact version:**
+
+```js
+import { Decoder, Encoder, Stream, Profile } from
+  "https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.214.0/src/index.js";
+```
+
+- Use the raw `/src/index.js` path, **not** `/+esm`. `+esm` is a jsDelivr
+  rebuild (bundled and minified), not the bytes Garmin published. The package
+  is already native ES modules, so it needs no rebuild.
+- Always pin the exact version. An unpinned URL changes underneath the page
+  when a new version is released.
+- Do not vendor (copy) the SDK into this repo. `handy-tools` is public, and the
+  FIT licence is non-sublicensable, so loading it from the CDN avoids
+  redistributing it.
+
+**Rules for the code:**
+- `repair.js` imports `Decoder`, `Encoder`, `Stream` and `Profile` from that URL
+  and nothing else FIT-related.
+- It does no byte-level work: no `DataView`, no `getUint*`, no CRC or header
+  maths. Bytes go in and out only through `Stream.fromByteArray()`, the
+  `Decoder` and the `Encoder`. A grep for `DataView|getUint|setUint` in
+  `repair.js` should return nothing.
+- Validate every file with the SDK before touching it: `decoder.isFIT()` and
+  `decoder.checkIntegrity()`, and refuse the file otherwise.
+- Fixes change decoded message objects only; the `Encoder` writes the file,
+  including headers and CRC.
+- Message and field names come from `Profile` (for example
+  `Profile.MesgNum.LENGTH`), not hardcoded numbers. The numeric table under
+  [FIT reference](#fit-reference) is only for checking results.
 
 ### Page flow
 

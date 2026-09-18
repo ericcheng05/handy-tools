@@ -2,7 +2,10 @@
 // No DOM here by design: this module only ever sees FIT bytes in, FIT bytes
 // out, so it could move into a Worker (or Node) unchanged. See ../TODO-swim-fit-repair.md.
 
-import { Decoder, Encoder, Stream, Profile } from 'https://cdn.jsdelivr.net/npm/@garmin/fitsdk/+esm';
+// Pinned to an exact version, and the raw published /src/index.js — not
+// jsDelivr's /+esm, which is a bundled/minified rebuild, not what Garmin
+// shipped. See TODO-swim-fit-repair.md § Official FIT SDK only.
+import { Decoder, Encoder, Stream, Profile } from 'https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.214.0/src/index.js';
 
 const LENGTH_MESG_NUM = Profile.MesgNum.LENGTH;
 
