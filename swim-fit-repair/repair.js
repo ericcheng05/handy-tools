@@ -71,6 +71,25 @@ function dominantStroke(activeLengths) {
   return strokes.size === 1 ? [...strokes][0] : 'mixed';
 }
 
+function findGroup(model, length) {
+  return model.laps.find(g => g.lengths.includes(length));
+}
+
+/** Estimate a plausible stroke count for a length with none recorded (e.g. a
+ *  rest being manually converted to a swim), from the lap's other active
+ *  lengths, falling back to the whole session when the lap has none. */
+function estimateStrokes(model, length) {
+  const group = findGroup(model, length);
+  const localActive = group ? group.lengths.filter(l => l !== length && l.lengthType === 'active') : [];
+  const pool = localActive.length > 0
+    ? localActive
+    : model.laps.flatMap(g => g.lengths.filter(l => l !== length && l.lengthType === 'active'));
+  const m = median(pool.map(l => l.totalStrokes));
+  return m ? Math.round(m) : 0;
+}
+
+export const STROKE_OPTIONS = ['freestyle', 'backstroke', 'breaststroke', 'butterfly', 'drill', 'mixed', 'im'];
+
 // ── Detection ───────────────────────────────────────────────
 
 /**
@@ -193,28 +212,117 @@ function splitLength(target, n, poolLength) {
  * @param {Set<string>} selectedIds
  */
 export function applyFixes(decoded, model, issues, selectedIds) {
-  const poolLength = model.session.poolLength;
-
   for (const issue of issues) {
     if (!selectedIds.has(issue.id)) continue;
+    if (issue.type === 'A') Object.assign(issue.length, issue.proposed);
+    else splitLengthInPlace(decoded, model, issue.length, issue.n);
+  }
+  recomputeAll(model);
+}
 
-    if (issue.type === 'A') {
-      Object.assign(issue.length, issue.proposed);
-      continue;
-    }
+/**
+ * Split one length into N even lengths (time and strokes divided evenly,
+ * remainder to the last part) — the manual version of the Issue B fix.
+ * Replaces the length in both the lap's length array and the file's
+ * chronological message order, then recomputes.
+ */
+export function splitLengthInPlace(decoded, model, length, n) {
+  const group = findGroup(model, length);
+  if (!group) throw new Error('Length not found in this file');
 
-    // Issue B: replace the one merged length with N split lengths, in both
-    // the lap's length array and the file's chronological message order.
-    const newLengths = splitLength(issue.length, issue.n, poolLength);
+  const newLengths = splitLength(length, n, model.session.poolLength);
 
-    const group = model.laps.find(g => g.lengths.includes(issue.length));
-    const posInLap = group.lengths.indexOf(issue.length);
-    group.lengths.splice(posInLap, 1, ...newLengths);
+  const pos = group.lengths.indexOf(length);
+  group.lengths.splice(pos, 1, ...newLengths);
 
-    const orderIdx = decoded.order.findIndex(o => o.msg === issue.length);
-    decoded.order.splice(orderIdx, 1, ...newLengths.map(msg => ({ num: LENGTH_MESG_NUM, msg })));
+  const orderIdx = decoded.order.findIndex(o => o.msg === length);
+  decoded.order.splice(orderIdx, 1, ...newLengths.map(msg => ({ num: LENGTH_MESG_NUM, msg })));
+
+  recomputeAll(model);
+  return newLengths;
+}
+
+/**
+ * Merge 2+ adjacent lengths of the same kind (all active, or all rest) back
+ * into one — the manual inverse of a split. Time and strokes are summed,
+ * not multiplied: the merged length still represents one pool length (or
+ * one rest), since that's what the watch actually recorded, just split
+ * across too many messages.
+ */
+export function mergeLengthsInPlace(decoded, model, lengths) {
+  if (lengths.length < 2) throw new Error('Select at least 2 lengths to merge');
+  const sorted = [...lengths].sort((a, b) => a.messageIndex - b.messageIndex);
+
+  const group = model.laps.find(g => sorted.every(l => g.lengths.includes(l)));
+  if (!group) throw new Error('Selected lengths must all be in the same lap');
+
+  const positions = sorted.map(l => group.lengths.indexOf(l));
+  for (let i = 1; i < positions.length; i++)
+    if (positions[i] !== positions[i - 1] + 1) throw new Error('Selected lengths must be adjacent, with nothing in between');
+
+  const kind = sorted[0].lengthType;
+  if (!sorted.every(l => l.lengthType === kind))
+    throw new Error('Can only merge lengths of the same kind — all swimming, or all rest');
+
+  const totalElapsedMs = sorted.reduce((s, l) => s + Math.round(l.totalElapsedTime * 1000), 0);
+  const totalTimerMs = sorted.reduce((s, l) => s + Math.round(l.totalTimerTime * 1000), 0);
+
+  const merged = Object.assign({}, sorted[0]);
+  merged.totalElapsedTime = totalElapsedMs / 1000;
+  merged.totalTimerTime = totalTimerMs / 1000;
+  merged.startTime = sorted[0].startTime;
+  merged.timestamp = sorted[sorted.length - 1].timestamp;
+
+  if (kind === 'active') {
+    merged.totalStrokes = sorted.reduce((s, l) => s + (l.totalStrokes ?? 0), 0);
+    merged.avgSpeed = model.session.poolLength / merged.totalTimerTime;
+    if ('enhancedAvgSpeed' in merged) merged.enhancedAvgSpeed = merged.avgSpeed;
+    merged.swimStroke = dominantStroke(sorted);
   }
 
+  group.lengths.splice(positions[0], sorted.length, merged);
+
+  // Lengths may not be contiguous in the chronological order (records/events
+  // can fall between them), so remove each individually, then insert the
+  // merged length at the earliest removed position.
+  const orderPositions = sorted.map(l => decoded.order.findIndex(o => o.msg === l));
+  const insertAt = Math.min(...orderPositions);
+  for (const l of sorted) {
+    decoded.order.splice(decoded.order.findIndex(o => o.msg === l), 1);
+  }
+  decoded.order.splice(insertAt, 0, { num: LENGTH_MESG_NUM, msg: merged });
+
+  recomputeAll(model);
+  return merged;
+}
+
+/**
+ * Manually change what a length is: a stroke (marking it — or keeping it —
+ * active) or 'idle' (marking it rest). Converting a rest to a swim has no
+ * recorded stroke count, so one is estimated from the lap (see
+ * estimateStrokes); converting an already-active length just changes its
+ * stroke label, leaving its recorded time/strokes/speed untouched.
+ */
+export function setLengthKind(model, length, kind) {
+  if (kind === 'idle') {
+    length.lengthType = 'idle';
+    delete length.swimStroke;
+    length.totalStrokes = 0;
+    delete length.avgSpeed;
+    delete length.enhancedAvgSpeed;
+  } else if (STROKE_OPTIONS.includes(kind)) {
+    const wasIdle = length.lengthType !== 'active';
+    const strokesEstimate = wasIdle ? estimateStrokes(model, length) : null;
+    length.lengthType = 'active';
+    length.swimStroke = kind;
+    if (wasIdle) {
+      length.totalStrokes = strokesEstimate;
+      length.avgSpeed = model.session.poolLength / length.totalTimerTime;
+      if ('enhancedAvgSpeed' in length) length.enhancedAvgSpeed = length.avgSpeed;
+    }
+  } else {
+    throw new Error(`Unknown stroke: ${kind}`);
+  }
   recomputeAll(model);
 }
 
