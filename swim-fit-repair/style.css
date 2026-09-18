@@ -169,6 +169,54 @@ body
 .sr-stat-value .arrow { font-size: 13px; color: var(--text-dim); margin: 0 4px; font-weight: 400; }
 .sr-stat-value .after { color: var(--aqua); }
 
+/* ── Toolbar ── */
+.sr-toolbar
+{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sr-toolbar-hint { font-size: 12px; color: var(--text-dim); }
+.sr-toolbar-actions { display: flex; gap: 8px; }
+
+.sr-btn-ghost
+{
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color .2s, color .2s;
+}
+
+.sr-btn-ghost:hover:not(:disabled) { border-color: var(--aqua); color: var(--aqua); }
+.sr-btn-ghost:disabled { opacity: .4; cursor: not-allowed; }
+
+.sr-btn-sm
+{
+  background: var(--aqua);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .2s;
+  white-space: nowrap;
+}
+
+.sr-btn-sm:hover:not(:disabled) { background: var(--aqua-dim); }
+.sr-btn-sm:disabled { opacity: .4; cursor: not-allowed; }
+
 /* ── Lap / length table ── */
 .sr-laps { display: flex; flex-direction: column; gap: 10px; }
 
@@ -189,36 +237,67 @@ body
 
 .sr-length-row
 {
-  display: grid;
-  grid-template-columns: 30px 1fr auto auto auto;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 7px 14px;
+  gap: 6px 10px;
+  padding: 8px 14px;
   font-size: 12.5px;
   border-top: 1px solid var(--border);
 }
 
-.sr-length-row .idx { font-family: var(--font-mono); color: var(--text-dim); font-size: 11px; }
-.sr-length-row .stroke { color: var(--text); }
-.sr-length-row.is-idle .stroke { color: var(--idle); font-style: italic; }
-.sr-length-row .time, .sr-length-row .strokes, .sr-length-row .pace { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); text-align: right; }
+.sr-length-row input[type="checkbox"] { accent-color: var(--aqua); cursor: pointer; flex-shrink: 0; }
+.sr-length-row .idx { font-family: var(--font-mono); color: var(--text-dim); font-size: 11px; width: 20px; flex-shrink: 0; }
+
+.sr-kind-select
+{
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.sr-length-row.is-idle .sr-kind-select { color: var(--idle); font-style: italic; }
+
+.sr-length-row .time { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
+.sr-length-row .strokes, .sr-length-row .pace { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); }
 
 .sr-length-row.flagged { background: var(--warn-bg); }
 .sr-length-row.flagged.type-b { background: var(--high-bg); }
 
+.sr-split-control
+{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.sr-split-control input[type="number"]
+{
+  width: 38px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 4px;
+  text-align: center;
+}
+
 .sr-fix-row
 {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   padding-top: 4px;
   font-size: 12px;
   color: var(--text-muted);
 }
-
-.sr-fix-row label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
-.sr-fix-row input[type="checkbox"] { margin-top: 2px; accent-color: var(--aqua); cursor: pointer; }
 
 .sr-confidence
 {
@@ -278,8 +357,6 @@ body
 @media (max-width: 600px)
 {
   .sr-card { padding: 20px; }
-  .sr-length-row { grid-template-columns: 24px 1fr auto; row-gap: 4px; }
-  .sr-length-row .time { grid-column: 4; }
-  .sr-length-row .strokes { display: none; }
-  .sr-length-row .pace { display: none; }
+  .sr-length-row .strokes, .sr-length-row .pace { display: none; }
+  .sr-split-control { flex-basis: 100%; margin-left: 30px; }
 }

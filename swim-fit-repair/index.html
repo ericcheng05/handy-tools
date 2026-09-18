@@ -38,6 +38,13 @@
 
   <!-- ── Laps / lengths table ── -->
   <div class="sr-card sr-hidden" id="laps-card">
+    <div class="sr-toolbar">
+      <span class="sr-toolbar-hint" id="merge-hint">Tick 2+ adjacent lengths of the same kind to merge them</span>
+      <div class="sr-toolbar-actions">
+        <button class="sr-btn-ghost" id="merge-btn" disabled>⤳ Merge selected</button>
+        <button class="sr-btn-ghost" id="undo-btn">↺ Undo all edits</button>
+      </div>
+    </div>
     <div class="sr-laps" id="laps-container"></div>
   </div>
 
@@ -61,16 +68,28 @@ const summaryCard    = document.getElementById('summary-card');
 const summaryGrid    = document.getElementById('summary-grid');
 const lapsCard       = document.getElementById('laps-card');
 const lapsContainer  = document.getElementById('laps-container');
+const mergeBtn       = document.getElementById('merge-btn');
+const mergeHint      = document.getElementById('merge-hint');
+const undoBtn        = document.getElementById('undo-btn');
 const downloadCard   = document.getElementById('download-card');
 const downloadBtn    = document.getElementById('download-btn');
 
-let originalBytes  = null;  // ArrayBuffer of raw .fit bytes
-let activityId     = 'activity';
-let pristineModel  = null;  // model built from the untouched file — table structure + "before" totals
-let pristineIssues = null;  // issues detected against pristineModel, stable ids
-let selected       = new Set();
+const STROKE_LABELS = { freestyle: 'Free', backstroke: 'Back', breaststroke: 'Breast', butterfly: 'Fly', drill: 'Drill', mixed: 'Mixed', im: 'IM' };
+
+let originalBytes    = null;  // ArrayBuffer of raw .fit bytes
+let activityId       = 'activity';
+let original         = null;  // { decoded, model } — untouched, kept for "before" totals and Undo
+let working          = null;  // { decoded, model } — mutated in place by every fix/edit
+let selectedForMerge = new Set();  // length objects currently ticked for merging
 
 function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = 'sr-status ' + (cls || ''); }
+
+function decodeAndBuild(bytes)
+{
+  const decoded = repair.decodeFit(bytes);
+  const model = repair.buildModel(decoded.messages);
+  return { decoded, model };
+}
 
 function fmtTime(totalSeconds)
 {
@@ -82,11 +101,7 @@ function fmtTime(totalSeconds)
     : `${m}:${String(sec).padStart(2,'0')}`;
 }
 
-function fmtStroke(s)
-{
-  const map = { freestyle: 'Free', backstroke: 'Back', breaststroke: 'Breast', butterfly: 'Fly', drill: 'Drill', mixed: 'Mixed', im: 'IM' };
-  return map[s] || s || '—';
-}
+function fmtStroke(s) { return STROKE_LABELS[s] || s || '—'; }
 
 function fmtPace(avgSpeedMs)
 {
@@ -142,20 +157,18 @@ async function handleFile(file)
     originalBytes = bytes;
     activityId = idFromName(name);
 
-    pristineModel  = repair.buildModel(repair.decodeFit(originalBytes).messages);
-    pristineIssues = repair.detectIssues(pristineModel);
-    selected = new Set(pristineIssues.filter(i => i.defaultOn).map(i => i.id));
+    original = decodeAndBuild(originalBytes);
+    working  = decodeAndBuild(originalBytes);
+
+    // Auto-apply the high-confidence fix (a missed turn merging lengths);
+    // the low-confidence one (rest that's really a swim) stays a suggestion.
+    const initialIssues = repair.detectIssues(working.model);
+    const autoIds = new Set(initialIssues.filter(i => i.defaultOn).map(i => i.id));
+    if (autoIds.size) repair.applyFixes(working.decoded, working.model, initialIssues, autoIds);
 
     dzLabel.textContent = '✅  ' + file.name;
-    setStatus(
-      pristineIssues.length
-        ? `Found ${pristineIssues.length} possible issue${pristineIssues.length !== 1 ? 's' : ''} — review below`
-        : 'No issues found — this file looks clean',
-      'ok'
-    );
-
-    renderLaps();
-    updatePreview();
+    selectedForMerge.clear();
+    render();
 
     summaryCard.classList.remove('sr-hidden');
     lapsCard.classList.remove('sr-hidden');
@@ -168,24 +181,36 @@ async function handleFile(file)
   }
 }
 
-// ── Pipeline: fresh decode + apply selected fixes ──────────
-
-function runPipeline(selectedIds)
-{
-  const decoded = repair.decodeFit(originalBytes);
-  const model   = repair.buildModel(decoded.messages);
-  const issues  = repair.detectIssues(model);
-  repair.applyFixes(decoded, model, issues, selectedIds);
-  return { decoded, model, issues };
-}
-
 // ── Rendering ───────────────────────────────────────────────
 
-function renderLaps()
+function render()
 {
-  const issueByLength = new Map(pristineIssues.map(i => [i.length.messageIndex, i]));
+  const issues = repair.detectIssues(working.model);
+  setStatus(
+    issues.length
+      ? `${issues.length} possible issue${issues.length !== 1 ? 's' : ''} left — review below, or edit any length manually`
+      : 'No issues found — every length looks right',
+    'ok'
+  );
+  renderLaps(issues);
+  renderSummary(issues);
+}
 
-  lapsContainer.innerHTML = pristineModel.laps.map((g, lapIdx) =>
+function lengthOptionsHtml(selectedKind)
+{
+  const restOpt = `<option value="idle" ${selectedKind === 'idle' ? 'selected' : ''}>Rest</option>`;
+  const strokeOpts = repair.STROKE_OPTIONS.map(s =>
+    `<option value="${s}" ${s === selectedKind ? 'selected' : ''}>${fmtStroke(s)}</option>`
+  ).join('');
+  return restOpt + strokeOpts;
+}
+
+function renderLaps(issues)
+{
+  const issueByLength = new Map(issues.map(i => [i.length.messageIndex, i]));
+  const allLengths = working.model.laps.flatMap(g => g.lengths); // index == current message_index
+
+  lapsContainer.innerHTML = working.model.laps.map((g, lapIdx) =>
   {
     const isRest = g.lengths.every(l => l.lengthType === 'idle');
     const headerRight = isRest
@@ -195,32 +220,39 @@ function renderLaps()
     const rows = g.lengths.map(l =>
     {
       const issue = issueByLength.get(l.messageIndex);
+      const kind = l.lengthType === 'active' ? l.swimStroke : 'idle';
       const rowClass = ['sr-length-row', l.lengthType === 'idle' ? 'is-idle' : '', issue ? `flagged type-${issue.type.toLowerCase()}` : ''].filter(Boolean).join(' ');
-      const label = l.lengthType === 'active' ? fmtStroke(l.swimStroke) : 'Rest';
+
+      const splitControl = l.lengthType === 'active'
+        ? `<span class="sr-split-control">
+             <input type="number" min="2" max="8" value="2" data-split-n="${l.messageIndex}">
+             <button class="sr-btn-sm" data-split="${l.messageIndex}">Split</button>
+           </span>`
+        : '';
 
       let fixRow = '';
       if (issue)
       {
         const desc = issue.type === 'A'
-          ? `Mark as a swimming length (${fmtStroke(issue.proposed.swimStroke)}, ~${issue.proposed.totalStrokes} strokes)`
-          : `Split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)} each`;
+          ? `Suggested: mark as a swimming length (${fmtStroke(issue.proposed.swimStroke)}, ~${issue.proposed.totalStrokes} strokes)`
+          : `Suggested: split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)} each`;
         fixRow = `
           <div class="sr-fix-row">
-            <label>
-              <input type="checkbox" data-issue-id="${issue.id}" ${selected.has(issue.id) ? 'checked' : ''}>
-              <span>${desc}</span>
-            </label>
             <span class="sr-confidence ${issue.confidence}">${issue.confidence}</span>
+            <span>${desc}</span>
+            <button class="sr-btn-sm" data-apply-issue="${issue.id}">Apply</button>
           </div>`;
       }
 
       return `
         <div class="${rowClass}">
+          <input type="checkbox" data-idx="${l.messageIndex}" ${selectedForMerge.has(l) ? 'checked' : ''}>
           <span class="idx">${l.messageIndex}</span>
-          <span class="stroke">${label}</span>
-          <span class="time">${fmtTime(l.totalTimerTime)}</span>
+          <select class="sr-kind-select" data-kind="${l.messageIndex}">${lengthOptionsHtml(kind)}</select>
           <span class="strokes">${l.lengthType === 'active' ? (l.totalStrokes ?? '—') + ' str' : ''}</span>
           <span class="pace">${l.lengthType === 'active' ? fmtPace(l.avgSpeed) : ''}</span>
+          <span class="time">${fmtTime(l.totalTimerTime)}</span>
+          ${splitControl}
           ${fixRow}
         </div>`;
     }).join('');
@@ -232,19 +264,89 @@ function renderLaps()
       </div>`;
   }).join('');
 
-  lapsContainer.querySelectorAll('input[data-issue-id]').forEach(cb =>
+  // ── Wire up row controls ──
+  lapsContainer.querySelectorAll('input[data-idx]').forEach(cb =>
   {
     cb.addEventListener('change', () =>
     {
-      const id = cb.dataset.issueId;
-      if (cb.checked) selected.add(id); else selected.delete(id);
-      updatePreview();
+      const length = allLengths[Number(cb.dataset.idx)];
+      if (cb.checked) selectedForMerge.add(length); else selectedForMerge.delete(length);
+      updateMergeButton();
     });
   });
+
+  lapsContainer.querySelectorAll('select[data-kind]').forEach(sel =>
+  {
+    sel.addEventListener('change', () =>
+    {
+      const length = allLengths[Number(sel.dataset.kind)];
+      try { repair.setLengthKind(working.model, length, sel.value); selectedForMerge.clear(); render(); }
+      catch (err) { setStatus('Error: ' + err.message, 'error'); }
+    });
+  });
+
+  lapsContainer.querySelectorAll('button[data-split]').forEach(btn =>
+  {
+    btn.addEventListener('click', () =>
+    {
+      const idx = Number(btn.dataset.split);
+      const length = allLengths[idx];
+      const n = Number(lapsContainer.querySelector(`input[data-split-n="${idx}"]`).value) || 2;
+      try { repair.splitLengthInPlace(working.decoded, working.model, length, n); selectedForMerge.clear(); render(); }
+      catch (err) { setStatus('Error: ' + err.message, 'error'); }
+    });
+  });
+
+  lapsContainer.querySelectorAll('button[data-apply-issue]').forEach(btn =>
+  {
+    btn.addEventListener('click', () =>
+    {
+      const issue = issues.find(i => i.id === btn.dataset.applyIssue);
+      try { repair.applyFixes(working.decoded, working.model, [issue], new Set([issue.id])); selectedForMerge.clear(); render(); }
+      catch (err) { setStatus('Error: ' + err.message, 'error'); }
+    });
+  });
+
+  updateMergeButton();
 }
 
-function renderSummary(before, after)
+function updateMergeButton()
 {
+  mergeBtn.disabled = selectedForMerge.size < 2;
+  mergeHint.textContent = selectedForMerge.size >= 2
+    ? `${selectedForMerge.size} lengths selected`
+    : 'Tick 2+ adjacent lengths of the same kind to merge them';
+}
+
+mergeBtn.addEventListener('click', () =>
+{
+  try
+  {
+    repair.mergeLengthsInPlace(working.decoded, working.model, [...selectedForMerge]);
+    selectedForMerge.clear();
+    render();
+  }
+  catch (err)
+  {
+    setStatus('Error: ' + err.message, 'error');
+  }
+});
+
+undoBtn.addEventListener('click', () =>
+{
+  working = decodeAndBuild(originalBytes);
+  selectedForMerge.clear();
+  render();
+});
+
+function renderSummary(issues)
+{
+  const before = repair.summarize(original.model);
+  before.numLengths = original.model.laps.reduce((s, g) => s + g.lengths.length, 0);
+
+  const after = repair.summarize(working.model);
+  after.numLengths = working.model.laps.reduce((s, g) => s + g.lengths.length, 0);
+
   const distChanged = before.totalDistance !== after.totalDistance;
   const activeChanged = before.numActiveLengths !== after.numActiveLengths;
   const lenChanged = before.numLengths !== after.numLengths;
@@ -264,20 +366,8 @@ function renderSummary(before, after)
     stat('Total time', fmtTime(before.totalElapsedTime)),
     stat('Active lengths', beforeAfter(before.numActiveLengths, after.numActiveLengths, activeChanged)),
     stat('Total lengths', beforeAfter(before.numLengths, after.numLengths, lenChanged)),
-    stat('Fixes selected', `${selected.size} / ${pristineIssues.length}`),
+    stat('Issues left', String(issues.length)),
   ].join('');
-}
-
-function updatePreview()
-{
-  const before = repair.summarize(pristineModel);
-  before.numLengths = pristineModel.laps.reduce((s, g) => s + g.lengths.length, 0);
-
-  const { model: afterModel } = runPipeline(selected);
-  const after = repair.summarize(afterModel);
-  after.numLengths = afterModel.laps.reduce((s, g) => s + g.lengths.length, 0);
-
-  renderSummary(before, after);
 }
 
 // ── Download ────────────────────────────────────────────────
@@ -286,8 +376,7 @@ downloadBtn.addEventListener('click', () =>
 {
   try
   {
-    const { decoded } = runPipeline(selected);
-    const bytes = repair.encodeFit(decoded.order);
+    const bytes = repair.encodeFit(working.decoded.order);
     const blob = new Blob([bytes], { type: 'application/octet-stream' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
