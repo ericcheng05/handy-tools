@@ -263,16 +263,25 @@ export function applyFixes(decoded, model, issues, selectedIds) {
 /**
  * Split one length into N lengths — the manual version of the Issue B fix.
  * strokeMode 'divide' splits the recorded stroke count evenly; 'typical'
- * gives each part the lap's typical count instead. Replaces the length in
- * both the lap's length array and the file's chronological message order,
- * then recomputes.
+ * gives each part the lap's typical count instead; 'auto' (the default)
+ * divides only when the recorded count really is about N x a typical
+ * length, and otherwise uses the typical count — a count near one length's
+ * worth means the watch under-counted, and dividing it would leave every
+ * part wrong. Replaces the length in both the lap's length array and the
+ * file's chronological message order, then recomputes.
  */
-export function splitLengthInPlace(decoded, model, length, n, strokeMode = 'divide') {
+export function splitLengthInPlace(decoded, model, length, n, strokeMode = 'auto') {
   const group = findGroup(model, length);
   if (!group) throw new Error('Length not found in this file');
   if (!Number.isInteger(n) || n < 2 || n > 8) throw new Error('Split into between 2 and 8 lengths');
 
-  const strokesEach = strokeMode === 'typical' ? estimateStrokes(model, length) : null;
+  let strokesEach = null;
+  if (strokeMode !== 'divide') {
+    const typical = estimateStrokes(model, length);
+    const perPart = (length.totalStrokes ?? 0) / n;
+    const divisible = typical > 0 && Math.abs(perPart - typical) / typical <= 0.15;
+    if (typical > 0 && (strokeMode === 'typical' || !divisible)) strokesEach = typical;
+  }
   const newLengths = splitLength(length, n, model.session.poolLength, strokesEach);
 
   const pos = group.lengths.indexOf(length);

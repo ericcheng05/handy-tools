@@ -26,7 +26,7 @@
       <span class="dz-icon">📂</span>
       <span class="dz-label" id="dz-label">Drop your Garmin export here</span>
       <span class="dz-sub">.zip or .fit · processed entirely in your browser</span>
-      <input type="file" id="file-input" accept=".zip,.fit">
+      <input type="file" id="file-input" name="file" accept=".zip,.fit">
     </label>
     <div class="sr-status" id="status"></div>
   </div>
@@ -41,7 +41,7 @@
     <div class="sr-toolbar">
       <span class="sr-toolbar-hint" id="merge-hint">Tick lengths to merge (2+, adjacent, same kind) or bulk-change their stroke</span>
       <div class="sr-toolbar-actions">
-        <select class="sr-kind-select" id="bulk-kind-select"></select>
+        <select class="sr-kind-select" id="bulk-kind-select" name="bulk-kind"></select>
         <button class="sr-btn-ghost" id="bulk-apply-btn" disabled>Apply to selected</button>
         <button class="sr-btn-ghost" id="merge-btn" disabled>⤳ Merge selected</button>
         <button class="sr-btn-ghost" id="undo-btn">↺ Undo all edits</button>
@@ -229,8 +229,9 @@ function renderLaps(issues)
 
       const splitControl = l.lengthType === 'active'
         ? `<span class="sr-split-control">
-             <input type="number" min="2" max="8" value="2" data-split-n="${l.messageIndex}" title="Split into this many lengths">
-             <select class="sr-kind-select" data-split-mode="${l.messageIndex}" title="How to set the strokes of each part">
+             <input type="number" name="split-n" min="2" max="8" value="2" data-split-n="${l.messageIndex}" title="Split into this many lengths">
+             <select class="sr-kind-select" name="split-mode" data-split-mode="${l.messageIndex}" title="Auto: divide the strokes only if the count is really about N lengths' worth, otherwise use the lap's typical count">
+               <option value="auto">Auto strokes</option>
                <option value="divide">Even strokes</option>
                <option value="typical">Typical strokes</option>
              </select>
@@ -240,7 +241,7 @@ function renderLaps(issues)
 
       const active = l.lengthType === 'active';
       const strokesCell = active
-        ? `<span class="strokes"><input type="number" class="sr-strokes-input" min="0" max="500" value="${l.totalStrokes ?? 0}" data-strokes="${l.messageIndex}" title="Stroke count — edit to correct it"> str</span>`
+        ? `<span class="strokes"><input type="number" class="sr-strokes-input" name="strokes" min="0" max="500" value="${l.totalStrokes ?? 0}" data-strokes="${l.messageIndex}" title="Stroke count — edit to correct it"> str</span>`
         : '';
       const swolfCell = active
         ? `<span class="swolf" title="SWOLF = seconds + strokes, as Garmin Connect shows it">SWOLF ${Math.round(l.totalTimerTime + (l.totalStrokes ?? 0))}</span>`
@@ -264,9 +265,9 @@ function renderLaps(issues)
 
       return `
         <div class="${rowClass}">
-          <input type="checkbox" data-idx="${l.messageIndex}" ${selectedForMerge.has(l) ? 'checked' : ''}>
+          <input type="checkbox" name="select-length" data-idx="${l.messageIndex}" ${selectedForMerge.has(l) ? 'checked' : ''}>
           <span class="idx">${l.messageIndex}</span>
-          <select class="sr-kind-select" data-kind="${l.messageIndex}">${lengthOptionsHtml(kind)}</select>
+          <select class="sr-kind-select" name="kind" data-kind="${l.messageIndex}">${lengthOptionsHtml(kind)}</select>
           ${strokesCell}
           <span class="pace">${active ? fmtPace(l.avgSpeed) : ''}</span>
           ${swolfCell}
