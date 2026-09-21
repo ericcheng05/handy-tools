@@ -229,9 +229,21 @@ function renderLaps(issues)
 
       const splitControl = l.lengthType === 'active'
         ? `<span class="sr-split-control">
-             <input type="number" min="2" max="8" value="2" data-split-n="${l.messageIndex}">
+             <input type="number" min="2" max="8" value="2" data-split-n="${l.messageIndex}" title="Split into this many lengths">
+             <select class="sr-kind-select" data-split-mode="${l.messageIndex}" title="How to set the strokes of each part">
+               <option value="divide">Even strokes</option>
+               <option value="typical">Typical strokes</option>
+             </select>
              <button class="sr-btn-sm" data-split="${l.messageIndex}">Split</button>
            </span>`
+        : '';
+
+      const active = l.lengthType === 'active';
+      const strokesCell = active
+        ? `<span class="strokes"><input type="number" class="sr-strokes-input" min="0" max="500" value="${l.totalStrokes ?? 0}" data-strokes="${l.messageIndex}" title="Stroke count — edit to correct it"> str</span>`
+        : '';
+      const swolfCell = active
+        ? `<span class="swolf" title="SWOLF = seconds + strokes, as Garmin Connect shows it">SWOLF ${Math.round(l.totalTimerTime + (l.totalStrokes ?? 0))}</span>`
         : '';
 
       let fixRow = '';
@@ -239,7 +251,9 @@ function renderLaps(issues)
       {
         const desc = issue.type === 'A'
           ? `Suggested: mark as a swimming length (${fmtStroke(issue.proposed.swimStroke)}, ~${issue.proposed.totalStrokes} strokes)`
-          : `Suggested: split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)} each`;
+          : issue.type === 'C'
+            ? `Suggested: split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)}, ${issue.proposed[0].totalStrokes} strokes each (recorded ${issue.length.totalStrokes} looks under-counted)`
+            : `Suggested: split into ${issue.n} lengths of ~${fmtTime(issue.proposed[0].totalTimerTime)} each`;
         fixRow = `
           <div class="sr-fix-row">
             <span class="sr-confidence ${issue.confidence}">${issue.confidence}</span>
@@ -253,8 +267,9 @@ function renderLaps(issues)
           <input type="checkbox" data-idx="${l.messageIndex}" ${selectedForMerge.has(l) ? 'checked' : ''}>
           <span class="idx">${l.messageIndex}</span>
           <select class="sr-kind-select" data-kind="${l.messageIndex}">${lengthOptionsHtml(kind)}</select>
-          <span class="strokes">${l.lengthType === 'active' ? (l.totalStrokes ?? '—') + ' str' : ''}</span>
-          <span class="pace">${l.lengthType === 'active' ? fmtPace(l.avgSpeed) : ''}</span>
+          ${strokesCell}
+          <span class="pace">${active ? fmtPace(l.avgSpeed) : ''}</span>
+          ${swolfCell}
           <span class="time">${fmtTime(l.totalTimerTime)}</span>
           ${splitControl}
           ${fixRow}
@@ -296,8 +311,19 @@ function renderLaps(issues)
       const idx = Number(btn.dataset.split);
       const length = allLengths[idx];
       const n = Number(lapsContainer.querySelector(`input[data-split-n="${idx}"]`).value) || 2;
-      try { repair.splitLengthInPlace(working.decoded, working.model, length, n); selectedForMerge.clear(); render(); }
+      const mode = lapsContainer.querySelector(`select[data-split-mode="${idx}"]`).value;
+      try { repair.splitLengthInPlace(working.decoded, working.model, length, n, mode); selectedForMerge.clear(); render(); }
       catch (err) { setStatus('Error: ' + err.message, 'error'); }
+    });
+  });
+
+  lapsContainer.querySelectorAll('input[data-strokes]').forEach(input =>
+  {
+    input.addEventListener('change', () =>
+    {
+      const length = allLengths[Number(input.dataset.strokes)];
+      try { repair.setLengthStrokes(working.model, length, input.value); render(); }
+      catch (err) { setStatus('Error: ' + err.message, 'error'); render(); }
     });
   });
 

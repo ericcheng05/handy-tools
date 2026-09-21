@@ -74,6 +74,12 @@ function dominantStroke(activeLengths) {
   return strokes.size === 1 ? [...strokes][0] : 'mixed';
 }
 
+/** Per-length swim cadence (strokes/min), stored on the length message. */
+function refreshCadence(length) {
+  if (length.lengthType !== 'active' || !length.totalTimerTime) return;
+  length.avgSwimmingCadence = Math.round((length.totalStrokes ?? 0) / (length.totalTimerTime / 60));
+}
+
 function findGroup(model, length) {
   return model.laps.find(g => g.lengths.includes(length));
 }
@@ -148,7 +154,7 @@ export function detectIssues(model) {
           const n = Math.round(l.totalTimerTime / refTime);
           if (n >= 2) {
             const timeRatio = Math.abs(l.totalTimerTime / refTime - n) / n;
-            const strokeRatio = refStrokes ? Math.abs(l.totalStrokes / refStrokes - n) / n : Infinity;
+            const strokeRatio = Math.abs(l.totalStrokes / refStrokes - n) / n;
             if (timeRatio <= 0.15 && strokeRatio <= 0.15) {
               issues.push({
                 id: `B-${l.messageIndex}`,
@@ -160,6 +166,22 @@ export function detectIssues(model) {
                 n,
                 summary: `Length ${l.messageIndex}: ${l.totalTimerTime.toFixed(1)}s / ${l.totalStrokes} strokes is ~${n}x a normal length — likely a missed turn`,
                 proposed: splitLength(l, n, poolLength),
+              });
+            } else if (timeRatio <= 0.15) {
+              // Issue C: time says N lengths merged, but the stroke count doesn't
+              // scale with it — the watch under-counted strokes over the missed
+              // turn. Only one measurement agrees, so it needs confirming, and
+              // splitting the recorded strokes evenly would leave every part wrong.
+              issues.push({
+                id: `C-${l.messageIndex}`,
+                type: 'C',
+                confidence: 'medium',
+                defaultOn: false,
+                lapIndex: g.lap.messageIndex,
+                length: l,
+                n,
+                summary: `Length ${l.messageIndex}: ${l.totalTimerTime.toFixed(1)}s is ~${n}x a normal length, but only ${l.totalStrokes} strokes — likely a missed turn with under-counted strokes`,
+                proposed: splitLength(l, n, poolLength, Math.round(refStrokes)),
               });
             }
           }
@@ -173,7 +195,13 @@ export function detectIssues(model) {
 
 // ── Fixes ───────────────────────────────────────────────────
 
-function splitLength(target, n, poolLength) {
+/**
+ * Split one length into N parts. Time and calories are divided evenly (the
+ * remainder goes to the last part). Strokes are divided evenly too, unless
+ * strokesEach is given — then every part gets that count instead, for when
+ * the recorded count is itself unreliable (e.g. the watch missed strokes).
+ */
+function splitLength(target, n, poolLength, strokesEach = null) {
   const totalMs = Math.round(target.totalTimerTime * 1000);
   const baseMs = Math.floor(totalMs / n);
   const remMs = totalMs - baseMs * n;
@@ -182,23 +210,28 @@ function splitLength(target, n, poolLength) {
   const baseStrokes = Math.floor(totalStrokes / n);
   const remStrokes = totalStrokes - baseStrokes * n;
 
+  const hasCalories = target.totalCalories != null;
+  const baseCal = hasCalories ? Math.floor(target.totalCalories / n) : 0;
+  const remCal = hasCalories ? target.totalCalories - baseCal * n : 0;
+
   let cursor = target.startTime;
   const parts = [];
   for (let i = 0; i < n; i++) {
     const isLast = i === n - 1;
     const partMs = baseMs + (isLast ? remMs : 0);
-    const partStrokes = baseStrokes + (isLast ? remStrokes : 0);
     const partSec = partMs / 1000;
     const avgSpeed = poolLength / partSec;
 
     const clone = Object.assign({}, target);
     clone.totalElapsedTime = partSec;
     clone.totalTimerTime = partSec;
-    clone.totalStrokes = partStrokes;
+    clone.totalStrokes = strokesEach ?? baseStrokes + (isLast ? remStrokes : 0);
     clone.avgSpeed = avgSpeed;
     if ('enhancedAvgSpeed' in target) clone.enhancedAvgSpeed = avgSpeed;
+    if (hasCalories) clone.totalCalories = baseCal + (isLast ? remCal : 0);
     clone.startTime = new Date(cursor.getTime());
     clone.timestamp = new Date(cursor.getTime() + partMs);
+    refreshCadence(clone);
     parts.push(clone);
 
     cursor = new Date(cursor.getTime() + partMs);
@@ -217,23 +250,30 @@ function splitLength(target, n, poolLength) {
 export function applyFixes(decoded, model, issues, selectedIds) {
   for (const issue of issues) {
     if (!selectedIds.has(issue.id)) continue;
-    if (issue.type === 'A') Object.assign(issue.length, issue.proposed);
-    else splitLengthInPlace(decoded, model, issue.length, issue.n);
+    if (issue.type === 'A') {
+      Object.assign(issue.length, issue.proposed);
+      refreshCadence(issue.length);
+    } else {
+      splitLengthInPlace(decoded, model, issue.length, issue.n, issue.type === 'C' ? 'typical' : 'divide');
+    }
   }
   recomputeAll(model);
 }
 
 /**
- * Split one length into N even lengths (time and strokes divided evenly,
- * remainder to the last part) — the manual version of the Issue B fix.
- * Replaces the length in both the lap's length array and the file's
- * chronological message order, then recomputes.
+ * Split one length into N lengths — the manual version of the Issue B fix.
+ * strokeMode 'divide' splits the recorded stroke count evenly; 'typical'
+ * gives each part the lap's typical count instead. Replaces the length in
+ * both the lap's length array and the file's chronological message order,
+ * then recomputes.
  */
-export function splitLengthInPlace(decoded, model, length, n) {
+export function splitLengthInPlace(decoded, model, length, n, strokeMode = 'divide') {
   const group = findGroup(model, length);
   if (!group) throw new Error('Length not found in this file');
+  if (!Number.isInteger(n) || n < 2 || n > 8) throw new Error('Split into between 2 and 8 lengths');
 
-  const newLengths = splitLength(length, n, model.session.poolLength);
+  const strokesEach = strokeMode === 'typical' ? estimateStrokes(model, length) : null;
+  const newLengths = splitLength(length, n, model.session.poolLength, strokesEach);
 
   const pos = group.lengths.indexOf(length);
   group.lengths.splice(pos, 1, ...newLengths);
@@ -276,11 +316,15 @@ export function mergeLengthsInPlace(decoded, model, lengths) {
   merged.startTime = sorted[0].startTime;
   merged.timestamp = sorted[sorted.length - 1].timestamp;
 
+  if (merged.totalCalories != null)
+    merged.totalCalories = sorted.reduce((s, l) => s + (l.totalCalories ?? 0), 0);
+
   if (kind === 'active') {
     merged.totalStrokes = sorted.reduce((s, l) => s + (l.totalStrokes ?? 0), 0);
     merged.avgSpeed = model.session.poolLength / merged.totalTimerTime;
     if ('enhancedAvgSpeed' in merged) merged.enhancedAvgSpeed = merged.avgSpeed;
     merged.swimStroke = dominantStroke(sorted);
+    refreshCadence(merged);
   }
 
   group.lengths.splice(positions[0], sorted.length, merged);
@@ -313,6 +357,7 @@ export function setLengthKind(model, length, kind) {
     length.totalStrokes = 0;
     delete length.avgSpeed;
     delete length.enhancedAvgSpeed;
+    delete length.avgSwimmingCadence;
   } else if (STROKE_OPTIONS.includes(kind)) {
     const wasIdle = length.lengthType !== 'active';
     const strokesEstimate = wasIdle ? estimateStrokes(model, length) : null;
@@ -322,10 +367,21 @@ export function setLengthKind(model, length, kind) {
       length.totalStrokes = strokesEstimate;
       length.avgSpeed = model.session.poolLength / length.totalTimerTime;
       if ('enhancedAvgSpeed' in length) length.enhancedAvgSpeed = length.avgSpeed;
+      refreshCadence(length);
     }
   } else {
     throw new Error(`Unknown stroke: ${kind}`);
   }
+  recomputeAll(model);
+}
+
+/** Manually correct a swimming length's stroke count (and so its SWOLF and cadence). */
+export function setLengthStrokes(model, length, strokes) {
+  if (length.lengthType !== 'active') throw new Error('Only swimming lengths have a stroke count');
+  const n = Math.round(Number(strokes));
+  if (!Number.isFinite(n) || n < 0 || n > 500) throw new Error('Enter a stroke count between 0 and 500');
+  length.totalStrokes = n;
+  refreshCadence(length);
   recomputeAll(model);
 }
 
@@ -350,10 +406,7 @@ export function recomputeAll(model) {
     g.lap.totalDistance = activeLens.length * poolLength;
 
     if (activeLens.length > 0) {
-      g.lap.totalStrokes = activeLens.reduce((s, l) => s + (l.totalStrokes ?? 0), 0);
-      const activeTt = activeLens.reduce((s, l) => s + l.totalTimerTime, 0);
-      g.lap.avgSpeed = g.lap.totalDistance / activeTt;
-      if ('enhancedAvgSpeed' in g.lap) g.lap.enhancedAvgSpeed = g.lap.avgSpeed;
+      applySwimTotals(g.lap, activeLens, g.lap.totalDistance);
       g.lap.swimStroke = dominantStroke(activeLens);
     }
   }
@@ -364,11 +417,32 @@ export function recomputeAll(model) {
 
   const allActive = laps.flatMap(g => g.lengths.filter(l => l.lengthType === 'active'));
   if (allActive.length > 0) {
-    const activeTtSum = allActive.reduce((s, l) => s + l.totalTimerTime, 0);
-    session.avgSpeed = session.totalDistance / activeTtSum;
-    if ('enhancedAvgSpeed' in session) session.enhancedAvgSpeed = session.avgSpeed;
+    applySwimTotals(session, allActive, session.totalDistance);
     if ('swimStroke' in session) session.swimStroke = dominantStroke(allActive);
   }
+}
+
+/**
+ * Write the values derived from a set of active lengths onto a lap or the
+ * session. The stroke total goes to totalCycles — the real field —
+ * because totalStrokes is only a subfield of it and the Encoder ignores
+ * subfields. The other derived fields are only rewritten where the file
+ * already has them.
+ */
+function applySwimTotals(target, activeLens, distance) {
+  const strokes = activeLens.reduce((s, l) => s + (l.totalStrokes ?? 0), 0);
+  const activeTime = activeLens.reduce((s, l) => s + l.totalTimerTime, 0);
+  const maxSpeed = Math.max(...activeLens.map(l => l.avgSpeed ?? 0));
+
+  target.totalCycles = strokes;
+  target.totalStrokes = strokes;
+  target.avgSpeed = distance / activeTime;
+  if ('enhancedAvgSpeed' in target) target.enhancedAvgSpeed = target.avgSpeed;
+  if ('maxSpeed' in target) target.maxSpeed = maxSpeed;
+  if ('enhancedMaxSpeed' in target) target.enhancedMaxSpeed = maxSpeed;
+  if ('activeTime' in target) target.activeTime = activeTime;
+  if ('avgStrokeDistance' in target && strokes > 0) target.avgStrokeDistance = Math.round(distance / strokes * 100) / 100;
+  if ('avgCadence' in target) target.avgCadence = Math.round(strokes / (activeTime / 60));
 }
 
 // ── Encode ──────────────────────────────────────────────────
