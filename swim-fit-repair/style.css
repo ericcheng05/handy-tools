@@ -264,7 +264,18 @@ body
 .sr-length-row.is-idle .sr-kind-select { color: var(--idle); font-style: italic; }
 
 .sr-length-row .time { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
-.sr-length-row .strokes, .sr-length-row .pace { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); }
+.sr-length-row .strokes, .sr-length-row .pace, .sr-length-row .swolf { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); }
+
+.sr-strokes-input
+{
+  width: 46px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 4px;
+  text-align: center;
+}
 
 .sr-length-row.flagged { background: var(--warn-bg); }
 .sr-length-row.flagged.type-b { background: var(--high-bg); }
@@ -357,6 +368,6 @@ body
 @media (max-width: 600px)
 {
   .sr-card { padding: 20px; }
-  .sr-length-row .strokes, .sr-length-row .pace { display: none; }
+  .sr-length-row .pace, .sr-length-row .swolf { display: none; }
   .sr-split-control { flex-basis: 100%; margin-left: 30px; }
 }
