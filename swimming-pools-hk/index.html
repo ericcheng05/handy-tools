@@ -86,10 +86,10 @@
    ===================================================================== */
 
 const BASE          = "https://opendata.myexample.work";
-const INDEX_URL     = BASE + "/swimming-pools-hk.json";
-const HOLIDAYS_URL  = BASE + "/holidays-hk.json";
-const ADMISSION_URL = BASE + "/swimming-pools-hk-admission.json";
-const POOL_URL      = id => BASE + "/swimming-pools-hk/" + id + ".json";
+const INDEX_URL     = BASE + "/hksar/lcsd/swimming-pools/index.json";
+const HOLIDAYS_URL  = BASE + "/hksar/holidays/index.json";
+const ADMISSION_URL = BASE + "/hksar/lcsd/swimming-pool-admission/latest.json";
+const POOL_URL      = id => BASE + "/hksar/lcsd/swimming-pools/" + id + ".json";
 const CONCURRENCY   = 8;
 
 // ── State ─────────────────────────────────────────────────
