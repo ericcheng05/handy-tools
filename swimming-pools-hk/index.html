@@ -542,9 +542,12 @@ function computeOpenFids(pool)
 
   // tcClosed maps fid → { reason, until } for facilities under a current temp closure
   const tcClosed = new Map();
-  // upcomingTcs collects closures starting later today — for pre-warning display
+  // upcomingTcs collects closures starting later today or at any time tomorrow — for pre-warning display
   const upcomingTcs = [];
   const todayPrefix = nowHkt.slice(0, 10);   // "YYYY-MM-DD"
+  const tmr         = new Date(hktNow);
+  tmr.setDate(tmr.getDate() + 1);
+  const tomorrowPrefix = tmr.getFullYear() + "-" + pad(tmr.getMonth() + 1) + "-" + pad(tmr.getDate());
 
   for (const tc of (pool.schedule.temporary_closures || []))
   {
@@ -558,15 +561,26 @@ function computeOpenFids(pool)
       const until  = "Until " + tcEnd.replace("T", " ");
       (tc.facility_ids === null ? allFids : tc.facility_ids).forEach(f => tcClosed.set(f, { reason, until }));
     }
-    else if (tcStart > nowHkt && tcStart.slice(0, 10) === todayPrefix)
+    else if (tcStart > nowHkt)
     {
-      // Upcoming closure today — collect for pre-warning
-      upcomingTcs.push({
-        from:        tc.start.slice(11, 16),    // "HH:MM"
-        until:       tc.end.slice(11, 16),      // "HH:MM"
-        reason:      tc.reason_en || "Temporary Closure",
-        facility_ids: tc.facility_ids
-      });
+      // Upcoming closure later today or tomorrow — collect for pre-warning
+      const startDay = tcStart.slice(0, 10);
+      const day = startDay === todayPrefix    ? "today"
+                : startDay === tomorrowPrefix ? "tomorrow"
+                : null;
+      if (day)
+      {
+        upcomingTcs.push({
+          day,
+          from:         tcStart.slice(11, 16),   // "HH:MM"
+          // Same-day end shows "HH:MM"; a closure running past its start day shows "MM-DD HH:MM"
+          until:        tcEnd.slice(0, 10) === startDay
+                          ? tcEnd.slice(11, 16)
+                          : tcEnd.slice(5).replace("T", " "),
+          reason:       tc.reason_en || "Temporary Closure",
+          facility_ids: tc.facility_ids
+        });
+      }
     }
   }
 
@@ -852,12 +866,20 @@ function buildPoolCard(pool, idx)
       `</div>`;
   }
 
-  // Upcoming temp closure notice — closures starting later today, shown dimmed
+  // Upcoming temp closure notices — one dimmed block each for later today and tomorrow
   const upcomingTcs = pool._upcomingTcs || [];
-  let upcomingTcHtml = "";
-  if (upcomingTcs.length > 0)
+  const UPCOMING_DAYS = [
+    ["today",    "Upcoming Closure Today"],
+    ["tomorrow", "Upcoming Closure Tomorrow"]
+  ];
+  const upcomingTcHtml = UPCOMING_DAYS.map(([day, title]) =>
   {
-    const lines = upcomingTcs.map(tc =>
+    const dayTcs = upcomingTcs
+      .filter(tc => tc.day === day)
+      .sort((a, b) => a.from.localeCompare(b.from));
+    if (dayTcs.length === 0) return "";
+
+    const lines = dayTcs.map(tc =>
     {
       const facilityNames = tc.facility_ids === null
         ? "All facilities"
@@ -872,12 +894,11 @@ function buildPoolCard(pool, idx)
           <span class="tc-upcoming-time">${esc(tc.from)} – ${esc(tc.until)}</span>
         </div>`;
     }).join("");
-    upcomingTcHtml =
-      `<div class="tc-notice-block tc-notice-upcoming">` +
-        `<div class="tc-notice-title"><span class="tc-notice-bang">🕐</span>Upcoming Closure Today</div>` +
-        lines +
-      `</div>`;
-  }
+    return `<div class="tc-notice-block tc-notice-upcoming">` +
+             `<div class="tc-notice-title"><span class="tc-notice-bang">🕐</span>${title}</div>` +
+             lines +
+           `</div>`;
+  }).join("");
 
   card.innerHTML = `
     <div class="card-head">
