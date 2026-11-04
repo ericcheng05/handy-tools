@@ -1,0 +1,62 @@
+/* ================================================
+   common.css — shared, theme-neutral page chrome
+   Linked by every page before its own style.css.
+
+   Theme hooks (set in each page's :root):
+     --back-color       back-link text colour
+     --back-hover       back-link hover colour (page accent)
+     --scrollbar-thumb  scrollbar thumb colour
+   ================================================ */
+
+/* ── Back nav ───────────────────────────────────────────── */
+.back-nav
+{
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 0;
+  line-height: 1.5;
+  opacity: 0;
+  animation: fadeUp 0.4s ease forwards;
+  animation-delay: 0.02s;
+}
+
+.back-link
+{
+  font-family: 'DM Mono', monospace;
+  font-size: 0.688rem;
+  color: var(--back-color, #7a7568);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.back-link:hover,
+.back-link:focus-visible
+{
+  color: var(--back-hover, currentColor);
+}
+
+@media (max-width: 600px)
+{
+  .back-nav { padding: 20px 20px 0; }
+}
+
+/* ── Entrance animation ─────────────────────────────────── */
+@keyframes fadeUp
+{
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce)
+{
+  .back-nav { animation: none; opacity: 1; }
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(0,0,0,0.15)); border-radius: 3px; }

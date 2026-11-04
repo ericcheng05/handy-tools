@@ -25,6 +25,13 @@
   --table-text:   #0f5c2c;
   --radius-card:  18px;
   --radius-tag:   6px;
+
+  --font-mono:       'DM Mono', monospace;
+
+  /* common.css hooks */
+  --back-color:      var(--muted);
+  --back-hover:      var(--green);
+  --scrollbar-thumb: var(--border-solid);
 }
 
 /* ── Body & Texture ────────────────────────────────────── */
@@ -61,7 +68,7 @@ header {
 }
 
 .header-label {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--muted); margin-bottom: 12px;
 }
@@ -93,7 +100,7 @@ h1 span { color: var(--green); }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
   padding: 7px 14px;
@@ -181,7 +188,7 @@ h1 span { color: var(--green); }
 
 .filter-search {
   width: 100%;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 7px 10px 7px 32px;
   border-radius: 8px;
@@ -242,7 +249,7 @@ h1 span { color: var(--green); }
 
 .filter-option-text { flex: 1; }
 .filter-option-badge {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--muted);
   background: var(--bg-alt);
@@ -261,7 +268,7 @@ h1 span { color: var(--green); }
 }
 
 .filter-clear-btn {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   background: none;
@@ -274,7 +281,7 @@ h1 span { color: var(--green); }
 .filter-clear-btn:hover { color: var(--ink); }
 
 .filter-results-hint {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--muted);
   text-align: right;
@@ -303,7 +310,7 @@ h1 span { color: var(--green); }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 3px 10px 3px 10px;
   border-radius: 20px;
@@ -325,7 +332,7 @@ h1 span { color: var(--green); }
 .chip-remove:hover { opacity: 1; }
 
 .clear-all-btn {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   background: none; border: none;
@@ -373,14 +380,14 @@ main {
 }
 
 .branch-tag {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 3px 10px; border-radius: var(--radius-tag);
   background: var(--bg-alt); color: var(--muted);
 }
 
 .system-link {
-  font-family: 'DM Mono', monospace; font-size: 10px;
+  font-family: var(--font-mono); font-size: 10px;
   color: var(--muted); text-decoration: none;
   display: flex; align-items: center; gap: 4px;
   transition: color 0.15s;
@@ -412,7 +419,7 @@ main {
 
 .link-btn {
   display: inline-flex; align-items: center; gap: 5px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
   padding: 6px 13px; border-radius: 8px; text-decoration: none;
   transition: all 0.15s;
@@ -450,7 +457,7 @@ main {
 }
 
 .dinein-count {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px; color: var(--green-mid);
   margin-left: auto;
   background: rgba(21,122,60,0.1);
@@ -462,7 +469,7 @@ main {
 }
 
 .table-btn {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px; font-weight: 500;
   min-width: 38px; height: 38px;
   padding: 0 6px;
@@ -480,7 +487,7 @@ main {
   font-size: 7px;
   position: absolute; top: 4px; left: 5px;
   color: var(--green-mid); opacity: 0.6;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
 }
 .table-btn:hover {
   background: var(--green);
@@ -507,10 +514,6 @@ main {
 }
 
 /* ── Animations ────────────────────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(18px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -521,29 +524,3 @@ main {
   main   { padding: 12px 16px 52px; grid-template-columns: 1fr; }
   .filter-panel { width: 260px; }
 }
-
-/* ── Back nav ────────────────────────────────────────────── */
-.back-nav
-{
-  max-width: 1140px;
-  margin: 0 auto;
-  padding: 28px 24px 0;
-  opacity: 0;
-  animation: fadeUp 0.4s ease forwards;
-  animation-delay: 0.02s;
-}
-
-.back-link
-{
-  font-family: 'DM Mono', monospace;
-  font-size: 0.688rem;
-  color: var(--muted);
-  text-decoration: none;
-  letter-spacing: 0.06em;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.2s;
-}
-
-.back-link:hover { color: var(--green); }

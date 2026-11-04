@@ -13,6 +13,13 @@
     --open-color:   #1a8c4e;
     --closed-color: #c8102e;
     --radius:       14px;
+
+    --font-mono:       'DM Mono', monospace;
+
+    /* common.css hooks */
+    --back-color:      var(--ink-faint);
+    --back-hover:      var(--red);
+    --scrollbar-thumb: var(--border);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -97,7 +104,7 @@ h1
 
 .subtitle
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     color: var(--ink-faint);
     letter-spacing: 0.12em;
@@ -117,7 +124,7 @@ h1
 
 .progress-label
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     color: var(--ink-faint);
     margin-bottom: 6px;
@@ -198,7 +205,7 @@ h1
     background: rgba(200,16,46,0.04);
     border: 1px solid var(--border);
     border-radius: 10px;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: var(--ink-faint);
     flex-wrap: wrap;
@@ -277,7 +284,7 @@ h1
 
 .region-store-count
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
     font-weight: 500;
     padding: 3px 9px;
@@ -308,12 +315,6 @@ h1
     position: relative;
     overflow: hidden;
     animation: fadeUp 0.35s ease both;
-}
-
-@keyframes fadeUp
-{
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
 }
 
 .store-card::before
@@ -374,7 +375,7 @@ h1
 
 .store-id-label
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.63rem;
     color: var(--ink-faint);
 }
@@ -435,7 +436,7 @@ h1
 
 .row-value
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 500;
     color: var(--ink);
     text-align: right;
@@ -458,7 +459,7 @@ h1
 
 .ticket-chip
 {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     padding: 2px 8px;
     background: var(--red-glow);
@@ -511,27 +512,3 @@ h1
     .card-grid { grid-template-columns: 1fr; }
     h1 { font-size: 1.6rem; }
 }
-
-/* ── Back nav ── */
-.back-nav
-{
-    padding: 28px 24px 0;
-    opacity: 0;
-    animation: fadeUp 0.4s ease forwards;
-    animation-delay: 0.02s;
-}
-
-.back-link
-{
-    font-family: 'DM Mono', monospace;
-    font-size: 0.688rem;
-    color: var(--ink-faint);
-    text-decoration: none;
-    letter-spacing: 0.06em;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: color 0.2s;
-}
-
-.back-link:hover { color: var(--red); }

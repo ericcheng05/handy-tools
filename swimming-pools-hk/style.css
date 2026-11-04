@@ -1,5 +1,5 @@
 /* ── Google Fonts Import ─────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Noto+Sans+HK:wght@300;400;500&display=swap');
+/* Loaded via <link> in index.html */
 
 /* ── Variables ───────────────────────────────────────────── */
 :root
@@ -37,6 +37,11 @@
   --font-display: 'Outfit', sans-serif;
   --font-body:    'Noto Sans HK', sans-serif;
   --font-mono:    'DM Mono', monospace;
+
+  /* common.css hooks */
+  --back-color:      var(--muted);
+  --back-hover:      var(--blue);
+  --scrollbar-thumb: var(--border-h);
 }
 
 /* ── Reset ───────────────────────────────────────────────── */
@@ -86,30 +91,6 @@ body::after
   margin: 0 auto;
   padding: 0 28px 96px;
 }
-
-/* ── Back nav ────────────────────────────────────────────── */
-.back-nav
-{
-  padding: 28px 0 0;
-  opacity: 0;
-  animation: fadeUp 0.4s ease forwards;
-  animation-delay: 0.02s;
-}
-
-.back-link
-{
-  font-family: var(--font-mono);
-  font-size: 0.688rem;
-  color: var(--muted);
-  text-decoration: none;
-  letter-spacing: 0.06em;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.2s;
-}
-
-.back-link:hover { color: var(--blue); }
 
 /* ── Hero ────────────────────────────────────────────────── */
 .hero
@@ -844,18 +825,6 @@ body::after
 .spin { display: inline-block; animation: spinAnim 0.7s linear infinite; }
 
 @keyframes spinAnim { to { transform: rotate(360deg); } }
-
-/* ── Keyframes ───────────────────────────────────────────── */
-@keyframes fadeUp
-{
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Scrollbar ───────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-h); border-radius: 3px; }
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 640px)

@@ -30,6 +30,13 @@
   --av-5: #7b5cf0;
   --av-6: #c94e8e;
   --av-7: #5c8ee0;
+
+  --font-mono:       'DM Mono', monospace;
+
+  /* common.css hooks */
+  --back-color:      var(--text-muted);
+  --back-hover:      var(--msn-blue);
+  --scrollbar-thumb: rgba(0,120,212,0.2);
 }
 
 /* ── Reset ── */
@@ -107,7 +114,7 @@ body
 
 .msn-converter-card p code
 {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   background: var(--surface2);
   padding: 1px 5px;
@@ -289,7 +296,7 @@ body
   color: var(--text-muted);
   text-align: center;
   min-height: 20px;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .msn-status.error { color: #e05c5c; }
@@ -352,40 +359,6 @@ body
   box-shadow: var(--shadow);
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,120,212,0.2); border-radius: 3px; }
-
-/* ── Back nav ── */
-.back-nav
-{
-  padding: 28px 28px 0;
-  opacity: 0;
-  animation: fadeUp 0.4s ease forwards;
-  animation-delay: 0.02s;
-}
-
-.back-link
-{
-  font-family: 'DM Mono', monospace;
-  font-size: 0.688rem;
-  color: var(--text-muted);
-  text-decoration: none;
-  letter-spacing: 0.06em;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.2s;
-}
-
-.back-link:hover { color: var(--msn-blue); }
-
-@keyframes fadeUp
-{
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
 /* ── Responsive ── */
 @media (max-width: 600px)
