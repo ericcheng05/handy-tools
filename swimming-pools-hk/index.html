@@ -654,6 +654,11 @@ function render()
 
     if (regionPools.length === 0) continue;
 
+    // Within a region: open pools before closed ones, then by ID
+    regionPools.sort((a, b) =>
+      (b._status.open - a._status.open) || (a.swpId - b.swpId)
+    );
+
     const block = document.createElement("div");
     block.className = "region-block";
 
