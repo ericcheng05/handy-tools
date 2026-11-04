@@ -41,6 +41,9 @@
   --back-color:      var(--text-muted);
   --back-hover:      var(--wa-green);
   --scrollbar-thumb: rgba(0,0,0,0.15);
+  --back-nav-width:     568px;   /* align with .wa-converter-card (520 + 2x24 page padding) */
+  --back-nav-gutter:    24px;
+  --back-nav-gutter-sm: 24px;
 }
 
 /* ── Reset ── */

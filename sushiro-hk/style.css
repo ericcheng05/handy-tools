@@ -20,6 +20,9 @@
     --back-color:      var(--ink-faint);
     --back-hover:      var(--red);
     --scrollbar-thumb: var(--border);
+    --back-nav-width:     1280px;   /* align with .main card grid */
+    --back-nav-gutter:    20px;
+    --back-nav-gutter-sm: 20px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

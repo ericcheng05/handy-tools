@@ -35,6 +35,9 @@
   --back-color:      var(--text-muted);
   --back-hover:      var(--aqua);
   --scrollbar-thumb: rgba(0,0,0,0.15);
+  --back-nav-width:     760px;   /* align with .sr-container (720 + 2x20 page padding) */
+  --back-nav-gutter:    20px;
+  --back-nav-gutter-sm: 20px;
 }
 
 /* ── Reset ── */

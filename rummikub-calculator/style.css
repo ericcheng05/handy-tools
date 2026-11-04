@@ -46,6 +46,9 @@
   --back-color:      var(--muted);
   --back-hover:      var(--gold);
   --scrollbar-thumb: var(--gold-border);
+  --back-nav-width:     600px;   /* align with .rk-app cards (560 + 2x20 page padding) */
+  --back-nav-gutter:    20px;
+  --back-nav-gutter-sm: 14px;
 }
 
 /* ── Reset ── */

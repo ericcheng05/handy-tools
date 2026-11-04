@@ -33,6 +33,9 @@
   --back-color:      var(--muted);
   --back-hover:      var(--ev-green);
   --scrollbar-thumb: var(--ev-green-border);
+  --back-nav-width:     588px;   /* align with .ev-card (540 + 2x24 page padding) */
+  --back-nav-gutter:    24px;
+  --back-nav-gutter-sm: 16px;
 }
 
 /* ── Reset ── */
