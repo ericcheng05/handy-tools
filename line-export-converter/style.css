@@ -40,6 +40,9 @@
   --back-color:      var(--text-muted);
   --back-hover:      var(--line-green);
   --scrollbar-thumb: var(--border);
+  --back-nav-width:     568px;   /* align with .lc-converter-card (520 + 2x24 page padding) */
+  --back-nav-gutter:    24px;
+  --back-nav-gutter-sm: 24px;
 }
 
 /* ── Reset ── */
