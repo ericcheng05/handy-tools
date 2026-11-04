@@ -32,6 +32,9 @@
   --back-color:      var(--muted);
   --back-hover:      var(--green);
   --scrollbar-thumb: var(--border-solid);
+  --back-nav-width:     1140px;   /* align with header / main column */
+  --back-nav-gutter:    24px;
+  --back-nav-gutter-sm: 16px;
 }
 
 /* ── Body & Texture ────────────────────────────────────── */

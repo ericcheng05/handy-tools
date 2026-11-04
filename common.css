@@ -6,6 +6,12 @@
      --back-color       back-link text colour
      --back-hover       back-link hover colour (page accent)
      --scrollbar-thumb  scrollbar thumb colour
+
+   Optional, for pages whose content sits in a centred
+   column (so the back-link lines up with that column):
+     --back-nav-width      column max-width (default: none)
+     --back-nav-gutter     column side padding (default 28px)
+     --back-nav-gutter-sm  side padding at <=600px (default 20px)
    ================================================ */
 
 /* ── Back nav ───────────────────────────────────────────── */
@@ -13,7 +19,10 @@
 {
   position: relative;
   z-index: 1;
-  padding: 28px 28px 0;
+  box-sizing: border-box;
+  max-width: var(--back-nav-width, none);
+  margin: 0 auto;
+  padding: 28px var(--back-nav-gutter, 28px) 0;
   line-height: 1.5;
   opacity: 0;
   animation: fadeUp 0.4s ease forwards;
@@ -41,7 +50,7 @@
 
 @media (max-width: 600px)
 {
-  .back-nav { padding: 20px 20px 0; }
+  .back-nav { padding: 20px var(--back-nav-gutter-sm, 20px) 0; }
 }
 
 /* ── Entrance animation ─────────────────────────────────── */
