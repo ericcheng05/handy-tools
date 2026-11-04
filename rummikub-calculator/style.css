@@ -3,8 +3,6 @@
    style.css  ·  used by index.html only
    ================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Noto+Sans+HK:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
-
 /* ── Design tokens ── */
 :root
 {
@@ -43,6 +41,11 @@
   --radius-card:  20px;
   --shadow-card:  0 2px 12px rgba(0,0,0,0.07), 0 0 0 1px var(--border);
   --shadow-hover: 0 10px 32px rgba(0,0,0,0.13), 0 0 0 1px var(--border-h);
+
+  /* common.css hooks */
+  --back-color:      var(--muted);
+  --back-hover:      var(--gold);
+  --scrollbar-thumb: var(--gold-border);
 }
 
 /* ── Reset ── */
@@ -63,36 +66,6 @@ body
 }
 
 button { font: inherit; }
-
-/* ── Back nav ── */
-.back-nav
-{
-  padding: 28px 28px 0;
-  opacity: 0;
-  animation: fadeUp 0.4s ease forwards;
-  animation-delay: 0.02s;
-}
-
-.back-link
-{
-  font-family: var(--font-mono);
-  font-size: 0.688rem;
-  color: var(--muted);
-  text-decoration: none;
-  letter-spacing: 0.06em;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.2s;
-}
-
-.back-link:hover { color: var(--gold); }
-
-@keyframes fadeUp
-{
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
 /* ══════════════════════════════════════
    Shared layout
@@ -716,11 +689,6 @@ button { font: inherit; }
 .rk-final-row .total.neg { color: var(--neg); }
 
 .rk-modal-actions { display: flex; gap: 16px; align-items: center; margin-top: 10px; }
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 3px; }
 
 /* ── Responsive ── */
 @media (max-width: 600px)
