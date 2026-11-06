@@ -119,17 +119,20 @@
       {
         const meta = metaBySlug[chain.slug] || {};
 
-        // Only include branches that carry ordering data (system + links).
+        // Only include branches that carry ordering data (system + urls).
         // Branches without these fields (e.g. store-ID-only entries) are
         // silently skipped — the data layer stays neutral and the app
         // decides what it can render.
+        // `links` is the field's old name: accepted until the data migration
+        // has landed and cached copies have expired.
         return (chain.branches || [])
-          .filter(b => b.system && b.links)
+          .filter(b => b.system && (b.urls || b.links))
           .map(b => ({
             slug:   chain.slug,
             nameEn: meta['name_en'] || chain.slug,
             nameZh: meta['name_zh'] || '',
-            ...b
+            ...b,
+            urls:   b.urls || b.links
           }));
       });
 
@@ -439,7 +442,7 @@
 
   function cardHTML(r)
   {
-    const linksHTML = Object.entries(r.links).map(([k, url]) =>
+    const linksHTML = Object.entries(r.urls).map(([k, url]) =>
     {
       const m = LINK_META[k] || { cls: 'home', icon: '↗', label: k };
       return `<a class="link-btn ${m.cls}" href="${esc(url)}" target="_blank" rel="noopener">${m.icon} ${m.label}</a>`;
