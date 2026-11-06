@@ -123,16 +123,13 @@
         // Branches without these fields (e.g. store-ID-only entries) are
         // silently skipped — the data layer stays neutral and the app
         // decides what it can render.
-        // `links` is the field's old name: accepted until the data migration
-        // has landed and cached copies have expired.
         return (chain.branches || [])
-          .filter(b => b.system && (b.urls || b.links))
+          .filter(b => b.system && b.urls)
           .map(b => ({
             slug:   chain.slug,
             nameEn: meta['name_en'] || chain.slug,
             nameZh: meta['name_zh'] || '',
-            ...b,
-            urls:   b.urls || b.links
+            ...b
           }));
       });
 
