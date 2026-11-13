@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPX Lane Snapper</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../common.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="back-nav">
+  <a class="back-link" href="../">← myexample.work</a>
+</nav>
+
+<div class="gs-page">
+
+  <header class="gs-header">
+    <div>
+      <h1><span class="icon">🏃</span> GPX Lane Snapper</h1>
+      <p>Drop a GPX file from a run on a 400 m track. Line the track up with the satellite image, pick your lane, and every GPS point moves onto that lane. Time, heart rate and cadence stay exactly as recorded. Runs entirely in your browser: your GPX is never uploaded.</p>
+    </div>
+    <div class="gs-file" id="file-name">No file loaded</div>
+  </header>
+
+  <!-- ── Map + controls ── -->
+  <div class="gs-workspace">
+    <section class="gs-card gs-view" id="drop-zone" aria-label="Track view">
+      <div id="map" class="gs-map" aria-label="Satellite map with the track overlay"></div>
+      <div class="gs-empty" id="empty-state">
+        <span class="dz-icon">📂</span>
+        <span class="dz-label">Drop a GPX file on the map</span>
+        <span class="dz-sub">or use Open GPX · processed entirely in your browser</span>
+      </div>
+      <div class="gs-scrubber">
+        <div class="gs-map-legend">
+          <span><i class="gs-swatch raw"></i>Raw GPS</span>
+          <span><i class="gs-swatch snapped"></i>Corrected lane</span>
+          <span>Green handle moves the track, red handle rotates it.</span>
+        </div>
+        <label class="gs-label" for="scrub">Step through</label>
+        <input type="range" id="scrub" min="0" max="0" value="0">
+        <output id="scrub-readout" for="scrub"></output>
+      </div>
+    </section>
+
+    <aside class="gs-card gs-controls" aria-label="Settings">
+      <div class="gs-group">
+        <div class="gs-label">GPX file</div>
+        <div class="gs-row">
+          <label class="gs-btn" for="file-input">Open GPX</label>
+          <input type="file" id="file-input" name="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" class="gs-visually-hidden">
+          <a class="gs-btn" id="map-link" href="https://www.google.com/maps" target="_blank" rel="noopener">Check on Google Maps</a>
+        </div>
+        <p class="gs-note warn gs-hidden" id="load-error"></p>
+      </div>
+
+      <div class="gs-group">
+        <div class="gs-label">Lane <b id="lane-readout">Lane 1 · 400.0 m</b></div>
+        <div class="gs-lanes" id="lanes" role="group" aria-label="Lane"></div>
+      </div>
+
+      <div class="gs-group">
+        <div class="gs-label">Track position <b id="fit-readout">-</b></div>
+        <div class="gs-row">
+          <button type="button" class="gs-btn primary" id="auto-fit">Auto-fit to run</button>
+        </div>
+        <label class="gs-note" for="bearing-range">Long straights bearing (compass, 0-179°)</label>
+        <div class="gs-row">
+          <input type="range" id="bearing-range" min="0" max="179.5" step="0.5" value="0">
+          <input type="number" id="bearing-number" min="0" max="179.5" step="0.5" value="0" aria-label="Bearing in degrees">
+        </div>
+        <p class="gs-note">Auto-fit lines the track up with the GPS points, which may sit a few metres off. Then drag it onto the real track in the satellite image.</p>
+        <div class="gs-row">
+          <div class="gs-nudge" role="group" aria-label="Fine adjust">
+            <button type="button" data-nudge="anticlockwise" title="Rotate 0.5 degrees anticlockwise">&#8634;</button>
+            <button type="button" data-nudge="north" title="Move 0.5 m north">N</button>
+            <button type="button" data-nudge="clockwise" title="Rotate 0.5 degrees clockwise">&#8635;</button>
+            <button type="button" data-nudge="west" title="Move 0.5 m west">W</button>
+            <button type="button" data-nudge="south" title="Move 0.5 m south">S</button>
+            <button type="button" data-nudge="east" title="Move 0.5 m east">E</button>
+          </div>
+          <p class="gs-note">Steps of 0.5 m and 0.5°</p>
+        </div>
+        <label class="gs-label" for="opacity">Overlay opacity <b id="opacity-readout">45%</b></label>
+        <input type="range" id="opacity" min="0" max="100" step="5" value="45">
+        <label class="gs-check"><input type="checkbox" id="show-raw" checked><span>Show raw GPS points</span></label>
+      </div>
+
+      <div class="gs-group">
+        <label class="gs-label" for="smooth">Smoothing <b id="smooth-readout">15 s</b></label>
+        <input type="range" id="smooth" min="0" max="40" step="1" value="15">
+        <label class="gs-check"><input type="checkbox" id="even-pace" checked><span>Even pace within each lap (recommended for noisy GPS)</span></label>
+        <label class="gs-check"><input type="checkbox" id="whole-laps"><span>Round the distance to whole laps</span></label>
+        <label class="gs-check"><input type="checkbox" id="flatten"><span>Flatten elevation in the export</span></label>
+        <details>
+          <summary>Track size (non-standard tracks)</summary>
+          <div class="gs-dims">
+            <label for="straight">Straight length (m)</label>
+            <input type="number" id="straight" min="20" max="200" step="0.01" value="84.39">
+            <label for="kerb">Curve radius at the kerb (m)</label>
+            <input type="number" id="kerb" min="10" max="80" step="0.01" value="36.5">
+            <label for="lane-width">Lane width (m)</label>
+            <input type="number" id="lane-width" min="0.8" max="1.5" step="0.01" value="1.22">
+          </div>
+        </details>
+      </div>
+
+      <div class="gs-group">
+        <div class="gs-label">Export</div>
+        <div class="gs-row">
+          <button type="button" class="gs-btn primary" id="download">Download corrected GPX</button>
+          <button type="button" class="gs-btn" id="copy">Copy GPX text</button>
+        </div>
+        <p class="gs-note" id="export-note">Saves a .gpx you can upload to Garmin Connect or Strava.</p>
+        <textarea class="gs-copy-box gs-hidden" id="copy-box" name="copy-box" readonly aria-label="Corrected GPX text"></textarea>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ── Results (shown once a file is loaded) ── -->
+  <div class="gs-stack gs-hidden" id="results">
+    <dl class="gs-card gs-stats" id="stats"></dl>
+
+    <div class="gs-results">
+      <section class="gs-card">
+        <h2>Lap splits</h2>
+        <p class="gs-note" id="splits-note"></p>
+        <div class="gs-table-wrap">
+          <table>
+            <thead>
+              <tr><th>Lap</th><th>Split</th><th>Pace /km</th><th>Elapsed</th></tr>
+            </thead>
+            <tbody id="splits"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="gs-card gs-chart">
+        <h2>Pace over time</h2>
+        <p class="gs-note">30-second rolling pace. Faster is higher.</p>
+        <canvas id="pace-canvas" aria-label="Pace chart comparing raw GPS and corrected track"></canvas>
+        <div class="gs-chart-legend">
+          <span><i style="background: var(--raw)"></i>Raw GPS</span>
+          <span><i style="background: var(--accent)"></i>Corrected</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module">
+import {
+  DEFAULT_TRACK, laneRadius, lapLength, pointOnTrack, fromTrackFrame,
+  createProjection, autoFitPose, computeSnap, parseGpx, buildCorrectedGpx
+} from './snapper.js';
+
+// ── State ───────────────────────────────────────────────────
+
+const state = {
+  fileName: '',
+  xmlDoc: null,
+  samples: [],
+  local: [],
+  projection: null,
+  rawDistance: 0,
+  pose: { cx: 0, cy: 0, theta: 0 },
+  lane: 1,
+  track: { ...DEFAULT_TRACK },
+  smoothSeconds: 15,
+  evenPace: true,
+  wholeLaps: false,
+  flatten: false,
+  scrub: 0,
+  overlayOpacity: 0.45,
+  showRaw: true,
+  dragging: null,
+  fitRms: null,
+  result: null
+};
+
+const elements = {
+  fileName: document.getElementById('file-name'),
+  fileInput: document.getElementById('file-input'),
+  loadError: document.getElementById('load-error'),
+  mapLink: document.getElementById('map-link'),
+  lanes: document.getElementById('lanes'),
+  laneReadout: document.getElementById('lane-readout'),
+  fitReadout: document.getElementById('fit-readout'),
+  autoFit: document.getElementById('auto-fit'),
+  bearingRange: document.getElementById('bearing-range'),
+  bearingNumber: document.getElementById('bearing-number'),
+  smooth: document.getElementById('smooth'),
+  smoothReadout: document.getElementById('smooth-readout'),
+  evenPace: document.getElementById('even-pace'),
+  wholeLaps: document.getElementById('whole-laps'),
+  flatten: document.getElementById('flatten'),
+  straight: document.getElementById('straight'),
+  kerb: document.getElementById('kerb'),
+  laneWidth: document.getElementById('lane-width'),
+  download: document.getElementById('download'),
+  copy: document.getElementById('copy'),
+  copyBox: document.getElementById('copy-box'),
+  exportNote: document.getElementById('export-note'),
+  stats: document.getElementById('stats'),
+  splits: document.getElementById('splits'),
+  splitsNote: document.getElementById('splits-note'),
+  opacity: document.getElementById('opacity'),
+  opacityReadout: document.getElementById('opacity-readout'),
+  showRaw: document.getElementById('show-raw'),
+  paceCanvas: document.getElementById('pace-canvas'),
+  dropZone: document.getElementById('drop-zone'),
+  emptyState: document.getElementById('empty-state'),
+  results: document.getElementById('results'),
+  scrub: document.getElementById('scrub'),
+  scrubReadout: document.getElementById('scrub-readout')
+};
+
+function readToken(name)
+{
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function formatDuration(milliseconds)
+{
+  const totalSeconds = Math.round(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const paddedSeconds = String(seconds).padStart(2, '0');
+  if (hours > 0)
+  {
+    return hours + ':' + String(minutes).padStart(2, '0') + ':' + paddedSeconds;
+  }
+  return minutes + ':' + paddedSeconds;
+}
+
+function formatPace(secondsPerKm)
+{
+  if (!isFinite(secondsPerKm) || secondsPerKm <= 0)
+  {
+    return '-';
+  }
+  return formatDuration(secondsPerKm * 1000);
+}
+
+function formatClock(milliseconds)
+{
+  const date = new Date(milliseconds);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function bearingFromTheta(theta)
+{
+  const degrees = 90 - theta * 180 / Math.PI;
+  return ((degrees % 180) + 180) % 180;
+}
+
+function thetaFromBearing(bearing)
+{
+  return (90 - bearing) * Math.PI / 180;
+}
+
+function loadGpxText(text, name)
+{
+  let parsed;
+  try
+  {
+    parsed = parseGpx(text);
+  }
+  catch (error)
+  {
+    elements.loadError.textContent = error.message;
+    elements.loadError.classList.remove('gs-hidden');
+    return;
+  }
+  elements.loadError.classList.add('gs-hidden');
+  state.fileName = name;
+  state.xmlDoc = parsed.xmlDoc;
+  state.samples = parsed.samples;
+  state.projection = createProjection(parsed.samples);
+  state.local = parsed.samples.map((sample) => state.projection.toLocal(sample.lat, sample.lon));
+  state.rawDistance = 0;
+  for (let i = 1; i < state.local.length; i++)
+  {
+    state.rawDistance += Math.hypot(state.local[i].x - state.local[i - 1].x, state.local[i].y - state.local[i - 1].y);
+  }
+  state.scrub = 0;
+  elements.scrub.max = String(state.samples.length - 1);
+  elements.scrub.value = '0';
+  elements.copyBox.classList.add('gs-hidden');
+  const centre = state.projection.toGeo(0, 0);
+  elements.mapLink.href = 'https://www.google.com/maps/@' + centre.lat.toFixed(6) + ',' + centre.lon.toFixed(6) + ',18z/data=!3m1!1e3';
+  const start = new Date(state.samples[0].time);
+  elements.fileName.textContent = name + ' · ' + state.samples.length + ' points · ' + start.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  runAutoFit();
+  renderRawPoints();
+  fitMapToRun();
+  elements.emptyState.classList.add('gs-hidden');
+  elements.results.classList.remove('gs-hidden');
+}
+
+function runAutoFit()
+{
+  const radius = laneRadius(state.lane, state.track);
+  const moving = state.local.filter((point, index) => state.samples[index].cadence !== 0);
+  const fit = autoFitPose(moving.length >= 20 ? moving : state.local, radius, state.track.straight);
+  state.pose = fit.pose;
+  state.fitRms = fit.rms;
+  recompute();
+}
+
+function recompute()
+{
+  if (state.samples.length === 0)
+  {
+    return;
+  }
+  state.result = computeSnap(state.samples, state.local, {
+    track: state.track,
+    lane: state.lane,
+    pose: state.pose,
+    smoothSeconds: state.smoothSeconds,
+    evenPace: state.evenPace,
+    wholeLaps: state.wholeLaps
+  });
+  renderControls();
+  renderStats();
+  renderSplits();
+  drawTrack();
+  drawPace();
+  renderScrub();
+}
+
+function renderLaneButtons()
+{
+  elements.lanes.textContent = '';
+  for (let lane = 1; lane <= 8; lane++)
+  {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = String(lane);
+    button.dataset.lane = String(lane);
+    button.setAttribute('aria-pressed', String(lane === state.lane));
+    button.title = 'Lane ' + lane + ': ' + lapLength(laneRadius(lane, state.track), state.track).toFixed(1) + ' m per lap';
+    elements.lanes.appendChild(button);
+  }
+}
+
+function renderControls()
+{
+  const perimeter = lapLength(laneRadius(state.lane, state.track), state.track);
+  elements.laneReadout.textContent = 'Lane ' + state.lane + ' · ' + perimeter.toFixed(1) + ' m';
+  for (const button of elements.lanes.children)
+  {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.lane) === state.lane));
+    button.title = 'Lane ' + button.dataset.lane + ': ' + lapLength(laneRadius(Number(button.dataset.lane), state.track), state.track).toFixed(1) + ' m per lap';
+  }
+  const bearing = bearingFromTheta(state.pose.theta);
+  if (document.activeElement !== elements.bearingNumber)
+  {
+    elements.bearingNumber.value = bearing.toFixed(1);
+  }
+  elements.bearingRange.value = String(bearing);
+  elements.fitReadout.textContent = state.result ? 'median offset ' + state.result.medianResidual.toFixed(1) + ' m' : '-';
+  elements.smoothReadout.textContent = state.smoothSeconds === 0 ? 'off' : state.smoothSeconds + ' s';
+}
+
+function movingTime(result)
+{
+  let total = 0;
+  for (let i = 0; i < state.samples.length - 1; i++)
+  {
+    if (!result.stops[i])
+    {
+      total += state.samples[i + 1].time - state.samples[i].time;
+    }
+  }
+  return total;
+}
+
+function renderStats()
+{
+  const result = state.result;
+  const moving = movingTime(result);
+  const pace = moving / 1000 / (result.total / 1000);
+  const elapsed = state.samples[state.samples.length - 1].time - state.samples[0].time;
+  const items = [
+    { label: 'Laps', value: result.lapCount.toFixed(2), sub: Math.round(result.lapCount) + ' laps of lane ' + state.lane },
+    { label: 'Distance', value: (result.total / 1000).toFixed(2), unit: 'km', sub: result.perimeter.toFixed(1) + ' m per lap' },
+    { label: 'Moving time', value: formatDuration(moving), sub: formatDuration(elapsed) + ' elapsed' },
+    { label: 'Avg pace', value: formatPace(pace), unit: '/km', sub: result.direction > 0 ? 'Anticlockwise' : 'Clockwise' },
+    { label: 'Raw GPS', value: (state.rawDistance / 1000).toFixed(2), unit: 'km', sub: ((state.rawDistance - result.total) >= 0 ? '+' : '') + ((state.rawDistance - result.total) / 1000).toFixed(2) + ' km vs corrected' }
+  ];
+  elements.stats.textContent = '';
+  for (const item of items)
+  {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'gs-stat';
+    const term = document.createElement('dt');
+    term.textContent = item.label;
+    const value = document.createElement('dd');
+    value.textContent = item.value;
+    if (item.unit)
+    {
+      const unit = document.createElement('small');
+      unit.textContent = item.unit;
+      value.appendChild(unit);
+    }
+    const sub = document.createElement('div');
+    sub.className = 'gs-stat-sub';
+    sub.textContent = item.sub;
+    wrapper.append(term, value, sub);
+    elements.stats.appendChild(wrapper);
+  }
+}
+
+function renderSplits()
+{
+  const result = state.result;
+  const startTime = state.samples[0].time;
+  const endTime = state.samples[state.samples.length - 1].time;
+  elements.splits.textContent = '';
+  let previous = startTime;
+  const addRow = (label, from, to, metres, partial) =>
+  {
+    const row = document.createElement('tr');
+    if (partial)
+    {
+      row.className = 'gs-partial';
+    }
+    const lapCell = document.createElement('td');
+    lapCell.textContent = label;
+    const hadStop = state.samples.some((sample, index) => result.stops[index] && sample.time >= from && sample.time < to);
+    if (hadStop)
+    {
+      const tag = document.createElement('span');
+      tag.className = 'gs-tag';
+      tag.textContent = 'stop';
+      lapCell.appendChild(tag);
+    }
+    const splitCell = document.createElement('td');
+    splitCell.textContent = formatDuration(to - from);
+    const paceCell = document.createElement('td');
+    paceCell.textContent = formatPace((to - from) / 1000 / (metres / 1000));
+    const elapsedCell = document.createElement('td');
+    elapsedCell.textContent = formatDuration(to - startTime);
+    row.append(lapCell, splitCell, paceCell, elapsedCell);
+    elements.splits.appendChild(row);
+  };
+  result.lapTimes.forEach((time, index) =>
+  {
+    addRow(String(index + 1), previous, time, result.perimeter, false);
+    previous = time;
+  });
+  const remaining = result.total - result.lapTimes.length * result.perimeter;
+  if (remaining > 5)
+  {
+    addRow((result.lapTimes.length + 1) + ' (' + (remaining / result.perimeter).toFixed(2) + ')', previous, endTime, remaining, true);
+  }
+  const splitDurations = result.lapTimes.map((time, index) => time - (index === 0 ? startTime : result.lapTimes[index - 1]));
+  if (splitDurations.length > 0)
+  {
+    const fastest = Math.min(...splitDurations);
+    elements.splitsNote.textContent = 'Fastest full lap ' + formatDuration(fastest) + '. Laps marked stop include a pause.';
+  }
+  else
+  {
+    elements.splitsNote.textContent = 'No full laps yet with these settings.';
+  }
+}
+
+function prepareCanvas(canvas)
+{
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio))
+  {
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+  }
+  const context = canvas.getContext('2d');
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  return { context, width, height };
+}
+
+const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const STREET_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const NUDGE_METRES = 0.5;
+const NUDGE_DEGREES = 0.5;
+
+let map = null;
+const layers = {};
+
+function localToLatLng(x, y)
+{
+  const geo = state.projection.toGeo(x, y);
+  return [geo.lat, geo.lon];
+}
+
+function trackOutline(radius)
+{
+  const steps = 120;
+  const perimeter = 2 * state.track.straight + 2 * Math.PI * radius;
+  const latLngs = [];
+  for (let i = 0; i < steps; i++)
+  {
+    const onTrack = pointOnTrack((i / steps) * perimeter, radius, state.track.straight);
+    const world = fromTrackFrame(onTrack.u, onTrack.v, state.pose);
+    latLngs.push(localToLatLng(world.x, world.y));
+  }
+  latLngs.push(latLngs[0]);
+  return latLngs;
+}
+
+function trackPointLatLng(u, v)
+{
+  const world = fromTrackFrame(u, v, state.pose);
+  return localToLatLng(world.x, world.y);
+}
+
+function rotateHandleOffset()
+{
+  return state.track.straight / 2 + state.track.kerbRadius + state.track.laneWidth * 8 + 10;
+}
+
+function setupMap()
+{
+  map = L.map('map', { preferCanvas: true, maxZoom: 21, zoomSnap: 0.25 });
+  map.setView([20, 0], 2);
+  const satellite = L.tileLayer(SATELLITE_TILES, {
+    maxZoom: 21,
+    maxNativeZoom: 19,
+    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics'
+  });
+  const streets = L.tileLayer(STREET_TILES, {
+    maxZoom: 21,
+    maxNativeZoom: 20,
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+  });
+  satellite.addTo(map);
+  L.control.layers({ Satellite: satellite, Streets: streets }, null, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+  layers.band = L.polygon([], { stroke: false, interactive: false }).addTo(map);
+  layers.laneLines = [];
+  for (let lane = 0; lane <= 8; lane++)
+  {
+    layers.laneLines.push(L.polyline([], { weight: 1, interactive: false }).addTo(map));
+  }
+  layers.startLine = L.polyline([], { weight: 2.5, interactive: false }).addTo(map);
+  layers.running = L.polyline([], { weight: 3, interactive: false }).addTo(map);
+  layers.raw = L.layerGroup().addTo(map);
+  layers.link = L.polyline([], { weight: 1.5, dashArray: '4 4', interactive: false }).addTo(map);
+  layers.rawMarker = L.circleMarker([0, 0], { radius: 7, weight: 2, fillOpacity: 1, interactive: false }).addTo(map);
+  layers.snappedMarker = L.circleMarker([0, 0], { radius: 7, weight: 2, fillOpacity: 1, interactive: false }).addTo(map);
+  layers.moveHandle = L.marker([0, 0], {
+    draggable: true,
+    title: 'Drag to move the track',
+    zIndexOffset: 1000,
+    icon: L.divIcon({ className: 'gs-handle gs-handle-move', iconSize: [26, 26], html: '<span>+</span>' })
+  }).addTo(map);
+  layers.rotateHandle = L.marker([0, 0], {
+    draggable: true,
+    title: 'Drag to rotate the track',
+    zIndexOffset: 1000,
+    icon: L.divIcon({ className: 'gs-handle gs-handle-rotate', iconSize: [26, 26], html: '<span>&#8635;</span>' })
+  }).addTo(map);
+  layers.moveHandle.on('drag', (event) =>
+  {
+    const position = event.target.getLatLng();
+    const local = state.projection.toLocal(position.lat, position.lng);
+    state.dragging = 'move';
+    state.pose = { ...state.pose, cx: local.x, cy: local.y };
+    scheduleRecompute();
+  });
+  layers.rotateHandle.on('drag', (event) =>
+  {
+    const position = event.target.getLatLng();
+    const local = state.projection.toLocal(position.lat, position.lng);
+    state.dragging = 'rotate';
+    state.pose = { ...state.pose, theta: Math.atan2(local.y - state.pose.cy, local.x - state.pose.cx) };
+    scheduleRecompute();
+  });
+  const endHandleDrag = () =>
+  {
+    state.dragging = null;
+    recompute();
+  };
+  layers.moveHandle.on('dragend', endHandleDrag);
+  layers.rotateHandle.on('dragend', endHandleDrag);
+}
+
+function renderRawPoints()
+{
+  layers.raw.clearLayers();
+  if (!state.showRaw)
+  {
+    return;
+  }
+  const color = readToken('--raw');
+  for (const point of state.local)
+  {
+    L.circleMarker(localToLatLng(point.x, point.y), {
+      radius: 2.6,
+      stroke: false,
+      fillColor: color,
+      fillOpacity: 0.7,
+      interactive: false
+    }).addTo(layers.raw);
+  }
+}
+
+function fitMapToRun()
+{
+  const bounds = L.latLngBounds(state.local.map((point) => localToLatLng(point.x, point.y)));
+  map.fitBounds(bounds.pad(0.25));
+}
+
+function drawTrack()
+{
+  if (!state.result || !map)
+  {
+    return;
+  }
+  const colors = {
+    track: readToken('--track'),
+    trackLine: readToken('--track-line'),
+    raw: readToken('--raw'),
+    snapped: readToken('--snapped'),
+    ink: readToken('--text')
+  };
+  const track = state.track;
+  const opacity = state.overlayOpacity;
+  layers.band.setLatLngs([trackOutline(track.kerbRadius + track.laneWidth * 8), trackOutline(track.kerbRadius)]);
+  layers.band.setStyle({ fillColor: colors.track, fillOpacity: opacity * 0.8 });
+  layers.laneLines.forEach((line, lane) =>
+  {
+    line.setLatLngs(trackOutline(track.kerbRadius + track.laneWidth * lane));
+    line.setStyle({ color: colors.trackLine, opacity: Math.min(1, opacity + 0.2) });
+  });
+  const startInner = pointOnTrack(0, track.kerbRadius, track.straight);
+  const startOuter = pointOnTrack(0, track.kerbRadius + track.laneWidth * 8, track.straight);
+  layers.startLine.setLatLngs([trackPointLatLng(startInner.u, startInner.v), trackPointLatLng(startOuter.u, startOuter.v)]);
+  layers.startLine.setStyle({ color: colors.trackLine, opacity: Math.min(1, opacity + 0.3) });
+  layers.running.setLatLngs(trackOutline(state.result.radius));
+  layers.running.setStyle({ color: colors.snapped, opacity: 1 });
+  if (state.dragging !== 'move')
+  {
+    layers.moveHandle.setLatLng(localToLatLng(state.pose.cx, state.pose.cy));
+  }
+  if (state.dragging !== 'rotate')
+  {
+    layers.rotateHandle.setLatLng(trackPointLatLng(rotateHandleOffset(), 0));
+  }
+  const index = Math.min(state.scrub, state.local.length - 1);
+  const rawLatLng = localToLatLng(state.local[index].x, state.local[index].y);
+  const snappedLatLng = localToLatLng(state.result.snapped[index].x, state.result.snapped[index].y);
+  layers.link.setLatLngs([rawLatLng, snappedLatLng]);
+  layers.link.setStyle({ color: colors.trackLine });
+  layers.rawMarker.setLatLng(rawLatLng);
+  layers.rawMarker.setStyle({ fillColor: colors.raw, color: colors.trackLine });
+  layers.snappedMarker.setLatLng(snappedLatLng);
+  layers.snappedMarker.setStyle({ fillColor: colors.snapped, color: colors.ink });
+}
+
+function nudgeTrack(direction)
+{
+  const pose = { ...state.pose };
+  const rotation = NUDGE_DEGREES * Math.PI / 180;
+  if (direction === 'north')
+  {
+    pose.cy += NUDGE_METRES;
+  }
+  else if (direction === 'south')
+  {
+    pose.cy -= NUDGE_METRES;
+  }
+  else if (direction === 'east')
+  {
+    pose.cx += NUDGE_METRES;
+  }
+  else if (direction === 'west')
+  {
+    pose.cx -= NUDGE_METRES;
+  }
+  else if (direction === 'clockwise')
+  {
+    pose.theta -= rotation;
+  }
+  else if (direction === 'anticlockwise')
+  {
+    pose.theta += rotation;
+  }
+  state.pose = pose;
+  recompute();
+}
+
+function rollingPace(distanceAt, windowSeconds)
+{
+  const half = windowSeconds * 500;
+  const times = state.samples.map((sample) => sample.time);
+  const paces = [];
+  let left = 0;
+  let right = 0;
+  for (let i = 0; i < times.length; i++)
+  {
+    while (times[i] - times[left] > half)
+    {
+      left++;
+    }
+    while (right < times.length - 1 && times[right + 1] - times[i] <= half)
+    {
+      right++;
+    }
+    const seconds = (times[right] - times[left]) / 1000;
+    const metres = distanceAt(right) - distanceAt(left);
+    const hasStop = state.result.stops.slice(left, right).some(Boolean);
+    paces.push(seconds > 5 && metres > 1 && !hasStop ? seconds / (metres / 1000) : null);
+  }
+  return paces;
+}
+
+function drawPace()
+{
+  const { context, width, height } = prepareCanvas(elements.paceCanvas);
+  const cumulativeRaw = [0];
+  for (let i = 1; i < state.local.length; i++)
+  {
+    cumulativeRaw.push(cumulativeRaw[i - 1] + Math.hypot(state.local[i].x - state.local[i - 1].x, state.local[i].y - state.local[i - 1].y));
+  }
+  const rawPace = rollingPace((index) => cumulativeRaw[index], 30);
+  const fixedPace = rollingPace((index) => state.result.distances[index], 30);
+  const values = fixedPace.filter((value) => value !== null).sort((a, b) => a - b);
+  if (values.length === 0)
+  {
+    return;
+  }
+  const median = values[Math.floor(values.length / 2)];
+  const minPace = Math.max(120, Math.floor((median - 120) / 30) * 30);
+  const maxPace = Math.ceil((median + 120) / 30) * 30;
+  const plot = { left: 48, right: width - 14, top: 12, bottom: height - 28 };
+  const startTime = state.samples[0].time;
+  const endTime = state.samples[state.samples.length - 1].time;
+  const xOf = (time) => plot.left + (time - startTime) / (endTime - startTime) * (plot.right - plot.left);
+  const yOf = (pace) => plot.top + (pace - minPace) / (maxPace - minPace) * (plot.bottom - plot.top);
+  const colors = { line: readToken('--border'), muted: readToken('--text-muted'), raw: readToken('--raw'), accent: readToken('--accent') };
+  context.font = '11px ' + readToken('--font-mono');
+  context.fillStyle = colors.muted;
+  context.strokeStyle = colors.line;
+  context.lineWidth = 1;
+  context.textAlign = 'right';
+  context.textBaseline = 'middle';
+  for (let pace = minPace; pace <= maxPace; pace += 30)
+  {
+    const y = yOf(pace);
+    context.beginPath();
+    context.moveTo(plot.left, y);
+    context.lineTo(plot.right, y);
+    context.stroke();
+    if ((pace - minPace) % 60 === 0)
+    {
+      context.fillText(formatPace(pace), plot.left - 6, y);
+    }
+  }
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  const totalMinutes = (endTime - startTime) / 60000;
+  const stepMinutes = totalMinutes > 90 ? 20 : totalMinutes > 40 ? 10 : 5;
+  for (let minute = 0; minute <= totalMinutes; minute += stepMinutes)
+  {
+    context.fillText(minute + ' min', xOf(startTime + minute * 60000), plot.bottom + 8);
+  }
+  const drawSeries = (series, color, lineWidth) =>
+  {
+    context.strokeStyle = color;
+    context.lineWidth = lineWidth;
+    context.lineJoin = 'round';
+    context.beginPath();
+    let open = false;
+    series.forEach((pace, index) =>
+    {
+      if (pace === null)
+      {
+        open = false;
+        return;
+      }
+      const clamped = Math.min(maxPace, Math.max(minPace, pace));
+      const x = xOf(state.samples[index].time);
+      const y = yOf(clamped);
+      if (open)
+      {
+        context.lineTo(x, y);
+      }
+      else
+      {
+        context.moveTo(x, y);
+        open = true;
+      }
+    });
+    context.stroke();
+  };
+  context.save();
+  context.beginPath();
+  context.rect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
+  context.clip();
+  context.globalAlpha = 0.55;
+  drawSeries(rawPace, colors.raw, 1.2);
+  context.globalAlpha = 1;
+  drawSeries(fixedPace, colors.accent, 2.2);
+  context.restore();
+  const scrubX = xOf(state.samples[state.scrub].time);
+  context.strokeStyle = colors.muted;
+  context.setLineDash([3, 3]);
+  context.beginPath();
+  context.moveTo(scrubX, plot.top);
+  context.lineTo(scrubX, plot.bottom);
+  context.stroke();
+  context.setLineDash([]);
+}
+
+function renderScrub()
+{
+  const index = state.scrub;
+  const sample = state.samples[index];
+  const offset = Math.hypot(state.local[index].x - state.result.snapped[index].x, state.local[index].y - state.result.snapped[index].y);
+  const parts = [
+    formatClock(sample.time),
+    '+' + formatDuration(sample.time - state.samples[0].time),
+    'lap ' + (Math.floor(state.result.distances[index] / state.result.perimeter) + 1),
+    (state.result.distances[index] / 1000).toFixed(2) + ' km',
+    'moved ' + offset.toFixed(1) + ' m'
+  ];
+  if (sample.heartRate !== null)
+  {
+    parts.push(sample.heartRate + ' bpm');
+  }
+  if (state.result.stops[index])
+  {
+    parts.push('stopped');
+  }
+  elements.scrubReadout.textContent = parts.join(' · ');
+}
+
+function exportFileName()
+{
+  const base = state.fileName.replace(/\.gpx$/i, '') || 'activity';
+  return base + '-lane' + state.lane + '.gpx';
+}
+
+let redrawPending = false;
+function scheduleRecompute()
+{
+  if (redrawPending)
+  {
+    return;
+  }
+  redrawPending = true;
+  requestAnimationFrame(() =>
+  {
+    redrawPending = false;
+    recompute();
+  });
+}
+
+elements.lanes.addEventListener('click', (event) =>
+{
+  const button = event.target.closest('button[data-lane]');
+  if (!button)
+  {
+    return;
+  }
+  state.lane = Number(button.dataset.lane);
+  recompute();
+});
+
+elements.autoFit.addEventListener('click', () =>
+{
+  if (state.samples.length > 0)
+  {
+    runAutoFit();
+  }
+});
+
+const setBearing = (value) =>
+{
+  const bearing = Math.min(179.5, Math.max(0, Number(value) || 0));
+  state.pose = { ...state.pose, theta: thetaFromBearing(bearing) };
+  scheduleRecompute();
+};
+elements.bearingRange.addEventListener('input', () => setBearing(elements.bearingRange.value));
+elements.bearingNumber.addEventListener('change', () => setBearing(elements.bearingNumber.value));
+
+elements.smooth.addEventListener('input', () =>
+{
+  state.smoothSeconds = Number(elements.smooth.value);
+  scheduleRecompute();
+});
+elements.evenPace.addEventListener('change', () =>
+{
+  state.evenPace = elements.evenPace.checked;
+  recompute();
+});
+elements.wholeLaps.addEventListener('change', () =>
+{
+  state.wholeLaps = elements.wholeLaps.checked;
+  recompute();
+});
+elements.flatten.addEventListener('change', () =>
+{
+  state.flatten = elements.flatten.checked;
+});
+
+for (const [input, key] of [[elements.straight, 'straight'], [elements.kerb, 'kerbRadius'], [elements.laneWidth, 'laneWidth']])
+{
+  input.addEventListener('change', () =>
+  {
+    const value = parseFloat(input.value);
+    if (value > 0)
+    {
+      state.track = { ...state.track, [key]: value };
+      recompute();
+    }
+  });
+}
+
+elements.scrub.addEventListener('input', () =>
+{
+  state.scrub = Number(elements.scrub.value);
+  drawTrack();
+  drawPace();
+  renderScrub();
+});
+
+elements.fileInput.addEventListener('change', async () =>
+{
+  const file = elements.fileInput.files[0];
+  if (file)
+  {
+    loadGpxText(await file.text(), file.name);
+  }
+  elements.fileInput.value = '';
+});
+
+elements.dropZone.addEventListener('dragover', (event) =>
+{
+  event.preventDefault();
+  elements.dropZone.classList.add('drag-over');
+});
+elements.dropZone.addEventListener('dragleave', () => elements.dropZone.classList.remove('drag-over'));
+elements.dropZone.addEventListener('drop', async (event) =>
+{
+  event.preventDefault();
+  elements.dropZone.classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file)
+  {
+    loadGpxText(await file.text(), file.name);
+  }
+});
+
+document.querySelector('.gs-nudge').addEventListener('click', (event) =>
+{
+  const button = event.target.closest('button[data-nudge]');
+  if (button && state.result)
+  {
+    nudgeTrack(button.dataset.nudge);
+  }
+});
+
+elements.opacity.addEventListener('input', () =>
+{
+  state.overlayOpacity = Number(elements.opacity.value) / 100;
+  elements.opacityReadout.textContent = elements.opacity.value + '%';
+  drawTrack();
+});
+
+elements.showRaw.addEventListener('change', () =>
+{
+  state.showRaw = elements.showRaw.checked;
+  renderRawPoints();
+});
+
+elements.copy.addEventListener('click', async () =>
+{
+  if (!state.result)
+  {
+    return;
+  }
+  const text = buildCorrectedGpx(state.xmlDoc, state.projection, state.result.snapped, state.flatten);
+  try
+  {
+    await navigator.clipboard.writeText(text);
+    elements.exportNote.textContent = 'Copied. Paste it into a text file and save it as ' + exportFileName() + '.';
+  }
+  catch (error)
+  {
+    elements.copyBox.value = text;
+    elements.copyBox.classList.remove('gs-hidden');
+    elements.copyBox.focus();
+    elements.copyBox.select();
+    elements.exportNote.textContent = 'Your browser blocked the clipboard. The text is selected below; copy it with Ctrl+C or Cmd+C.';
+  }
+});
+
+elements.download.addEventListener('click', () =>
+{
+  if (!state.result)
+  {
+    return;
+  }
+  const fileName = exportFileName();
+  const url = URL.createObjectURL(new Blob([buildCorrectedGpx(state.xmlDoc, state.projection, state.result.snapped, state.flatten)], { type: 'application/gpx+xml' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  elements.exportNote.textContent = 'Saved ' + fileName + '.';
+});
+
+new ResizeObserver(() =>
+{
+  if (map)
+  {
+    map.invalidateSize();
+  }
+}).observe(document.getElementById('map'));
+
+setupMap();
+renderLaneButtons();
+</script>
+
+</body>
+</html>

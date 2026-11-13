@@ -68,6 +68,22 @@ Export from Connect → drop the `.zip` or `.fit` → tick the fixes → downloa
 
 ---
 
+### 🏃 GPX Lane Snapper
+> `gpx-lane-snapper/`
+
+GPS watches wander on a running track — a few metres of drift per lap adds up to a distance and pace that don't match the 400 m you actually ran. Drop in the GPX, line a track outline up with the satellite image, pick your lane, and every point is moved onto that lane.
+
+Export from Garmin Connect or Strava → drop the `.gpx` → fit the track → download the corrected file.
+
+- **🔒 Your GPX stays private** — parsing, fitting and export all happen client-side; the file is never uploaded. The only network traffic is the map imagery (Esri / CARTO tiles) for the area you're viewing
+- **🎯 Auto-fit** — finds the track's position and bearing from the GPS points, then you drag, rotate or nudge it onto the real track by eye
+- **🛣️ Lane-aware distance** — lanes 1–8 with standard measurement lines, so lane 4 laps are longer than lane 1; track dimensions are editable for non-standard tracks
+- **⏱️ Time and heart rate untouched** — only positions change; timestamps, heart rate and cadence are kept exactly as recorded
+- **📊 Laps, splits and pace** — raw-vs-corrected distance, per-lap splits with pause markers, and a rolling pace chart
+- **📦 Ready to re-upload** — downloads a `<name>-lane<N>.gpx`, or copies the text if your browser blocks the download
+
+---
+
 ## Dashboards
 
 ### 🍣 Sushiro Queue Status
